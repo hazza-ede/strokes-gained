@@ -824,28 +824,54 @@ function heroImprove(){
     ${next?`<span class="herofoot">Next biggest: ${esc(next.title.toLowerCase())}, ${Math.abs(next.v).toFixed(1)} a round.</span>`:''}
   </div>`;
 }
+// Home: one number, four tiles, one takeaway.
+function heroHome2(){
+  const rs=chrono(statRounds()).slice(-10); if(!rs.length) return '';
+  // Each round is measured against the handicap the golfer had that day, so "playing to" uses the average of those.
+  const mode=heroMode(), o=snap(rs,mode), me_=mode==='me'?o:snap(rs,'me'), h=Math.round(rs.reduce((a,r)=>a+Number(myHcp(r)),0)/rs.length*10)/10, playing=Math.max(-5,h-hcpDrop(me_.total));
+  const parts=CATS.map(([k])=>({k,v:o[k]})), worst=[...parts].sort((a,b)=>a.v-b.v)[0];
+  const tot=o.total, who=mode==='me'?`your ${fmtHcp(h)}`:`a ${fmtHcp(goalHcp())} golfer`;
+  const line=Math.abs(tot)<0.05?`Right on ${who}`:`${Math.abs(tot).toFixed(1)} shots a round ${tot>0?'better than':'off'} ${who}`;
+  const short={ott:'Driving',app:'Approach',atg:'Short game',putt:'Putting'};
+  return `<div class="hero homehero">${heroToggle()}
+    <span class="eyebrow">Playing to · last ${rs.length} round${rs.length>1?'s':''}</span>
+    <b class="homebig num">${fmtHcp(Math.round(playing*10)/10)}</b>
+    <span class="homesub">${line}</span>
+    <div class="quad">${parts.map(x=>`<div class="${x.v<=-0.3?'bad':x.v>=0.3?'good':''} ${x.k===worst.k&&x.v<-0.3?'worst':''}"><b class="num">${f1(x.v)}</b><span>${short[x.k]}</span></div>`).join('')}</div>
+  </div>`;
+}
+function homeLeak(){
+  const rs=chrono(statRounds()).slice(-10); if(!rs.length) return '';
+  const o=snap(rs,heroMode()), parts=CATS.map(([k])=>({k,v:o[k]})), worst=[...parts].sort((a,b)=>a.v-b.v)[0], best=[...parts].sort((a,b)=>b.v-a.v)[0], fix=Math.abs(Math.min(0,worst.v));
+  if(fix>=0.3) return `<button class="leakcard" data-act="imptab" data-val="overview"><span class="ic" aria-hidden="true">⛳</span><span><b>${Cap(SAY[worst.k])} is your biggest leak</b><span class="small muted">Fix it and you'd average ${Math.round(o.score-fix)}, not ${Math.round(o.score)}</span></span><i aria-hidden="true">›</i></button>`;
+  return best.v>=0.3?`<button class="leakcard" data-act="tab" data-val="stats"><span class="ic" aria-hidden="true">💪</span><span><b>${Cap(SAY[best.k])} is your strength</b><span class="small muted">You gain ${best.v.toFixed(1)} a round there</span></span><i aria-hidden="true">›</i></button>`:'';
+}
+function homeTiles(){
+  const B=S.block, cur=B&&B.sessions.find(x=>!x.done);
+  const plan=cur?`<button class="hometile" data-act="imptab" data-val="plan"><span class="eb">Next practice</span><b>${esc(moverTitle(cur.k))}</b><span class="small muted">${cur.day?dayName(cur.day)+' · ':''}${B.mins} min</span></button>`
+    :`<button class="hometile" data-act="${blockLeaks().length?'wizopen':'imptab'}" data-val="plan"><span class="eb">4-week plan</span><b>Build a plan around your leaks</b><span class="small muted">Drills, tests and targets</span></button>`;
+  let comp=`<button class="hometile" data-act="imptab" data-val="compete"><span class="eb">This week's challenge</span><b>Weekly tests</b><span class="small muted">See how you compare</span></button>`;
+  if(uid&&S.comp.state==='idle') setTimeout(()=>loadComp(),0);
+  if(uid&&S.comp.state==='ok'&&S.comp.tests.length){ const f=featuredFor(thisWeek()), band=myBand(), all=bestBy(S.comp.week.filter(r=>r.test_id===f.id&&(!r.flagged||r.user_id===uid))), mine=all.find(r=>r.user_id===uid), br=all.filter(r=>levelOf(r.hcp??30).name===band), bi=br.findIndex(r=>r.user_id===uid);
+    comp=`<button class="hometile" data-act="imptab" data-val="compete"><span class="eb">This week's challenge</span><b>${esc(f.name)}</b><span class="small muted">${mine?(bi>=0&&br.length>1?`You're top ${Math.max(1,Math.round((bi+1)/br.length*100))}% · ${mine.points} pts`:`Your best: ${mine.points} pts`):'Not played yet'}</span></button>`; }
+  return `<div class="hometiles">${plan}${comp}</div>`;
+}
 function vHome(){
   const real=statRounds(), showing=real.length?real:[EXAMPLE_ROUND];
   const avg={ott:0,app:0,atg:0,putt:0,total:0};
   showing.forEach(r=>{ const {t}=rsg(r,S.base); CATS.forEach(([k])=>avg[k]+=t[k]); avg.total+=t.total; });
   Object.keys(avg).forEach(k=>avg[k]/=showing.length);
-  const draft=S.round&&!S.round.saved;
+  const draft=S.round&&!S.round.saved, rounds=allRounds(), shown=S.homeAll?rounds:rounds.slice(0,3);
   return `
   <div class="top"><span class="brand">Strokes Gained</span><span class="muted small">${uid?'Synced':'Saved on this phone'}</span></div>
-  <div class="stack">
-    ${heroHome()}
-    <div class="small muted">Handicap <b class="num">${S.hcp!=null?esc(fmtHcp(S.hcp)):'not set'}</b> · Goal <b class="num">${esc(fmtHcp(goalHcp()))}</b> · <button class="linkbtn" data-act="tab" data-val="mygolf">Change</button></div>
+  <div class="stack" style="gap:14px">
     ${draft?`<button class="btn big primary" data-act="resume">Resume round · ${esc(S.round.course)} · hole ${S.idx+1}</button>`:''}
     <button class="btn big ${draft?'':'primary'}" data-act="newround">Start a new round</button>
-    ${secHead('Your game',real.length?`Average of your ${real.length} round${real.length>1?'s':''}`:'An example round until you save your own',sampleTag(!real.length))}
-    <div class="card stack">
-      <div class="small muted">Compared with ${esc(baseText(S.base,real.length?null:EXAMPLE_ROUND))}${S.base==='me'&&real.length?' (each round uses the handicap you had that day)':''}</div>
-      ${baseChips(null)}
-      ${bars(avg)}
-      <div class="row between"><span class="muted">Total strokes gained per round</span><b class="bigsg ${cls(avg.total)}" style="font-size:2rem">${f1(avg.total)}</b></div>
-    </div>
-    ${secHead('Rounds','Tap a round for the full breakdown')}
-    <div class="stack">${allRounds().map(r=>{ const {t}=rsg(r,S.base); return `<button class="roundrow" data-act="open" data-id="${esc(r.id)}"><span><b>${esc(r.course)}</b>${r.example?' <span class="tag">Example</span>':''}${r.demo?' <span class="tag">Sample</span>':''}${r.excluded?' <span class="tag out">Left out</span>':''}${condTags(r)}<br><span class="small muted">${fmtDate(r.date)} · ${r.holes.length} holes · shot ${t.score}</span></span><span class="bigsg ${cls(t.total)}" style="font-size:1.6rem">${f1(t.total)}</span></button>`; }).join('')}</div>
+    ${heroHome2()}
+    ${homeLeak()}
+    ${homeTiles()}
+    <div class="row between" style="margin-top:4px"><h3>${real.length?'Recent rounds':'Example round'}</h3>${rounds.length>3?`<button class="linkbtn small" data-act="homeall">${S.homeAll?'Show less':`See all ${rounds.length}`}</button>`:''}</div>
+    <div class="card homerounds">${shown.map(r=>{ const {t}=rsg(r,S.base); return `<button class="hrr" data-act="open" data-id="${esc(r.id)}"><span><b>${esc(r.course.replace(/ – .*$/,''))}</b>${r.example?' <span class="tag">Example</span>':''}${r.demo?' <span class="tag">Sample</span>':''}${r.excluded?' <span class="tag out">Left out</span>':''}<br><span class="small muted">${fmtDate(r.date)} · shot ${t.score}</span></span><b class="num ${cls(t.total)}">${f1(t.total)}</b></button>`; }).join('')}</div>
   </div>`;
 }
 function vPath(rounds,isExample){
@@ -2169,6 +2195,7 @@ document.addEventListener('click',e=>{
     case 'wizclose': S.view='improve'; S.impTab='plan'; window.scrollTo(0,0); break;
     case 'wizgo': S.wiz=Number(val); window.scrollTo(0,0); break;
     case 'libcat': S.libCat=val; break;
+    case 'homeall': S.homeAll=!S.homeAll; break;
     case 'compreload': loadComp(true); return;
     case 'comptest': S.comp.screen='board'; S.comp.test=val; S.comp.msg=''; window.scrollTo(0,0); break;
     case 'compback': S.comp.screen='list'; S.comp.msg=''; window.scrollTo(0,0); break;
