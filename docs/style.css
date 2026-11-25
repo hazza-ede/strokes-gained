@@ -434,3 +434,27 @@ b.pk{display:inline-grid;place-items:center;width:18px;height:18px;border-radius
 .libseg{border-radius:999px;padding:4px;gap:4px}
 .libseg button{padding:9px 4px;font-size:.85rem;border-radius:999px;transition:background .15s}
 .libseg button.on{background:var(--accent);color:#fff}
+/* Compete */
+.ch{display:grid;gap:4px;text-align:left;width:100%;border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:14px}
+.ch .top2{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ch .meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pill2{display:inline-block;font-size:.72rem;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.pill2.gold{background:#FFF1C9;color:#8A6400}
+.lb{display:grid;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.lbr{display:grid;grid-template-columns:34px 1fr 52px 54px;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.lbr:last-child{border-bottom:0}
+.lbr.me{background:var(--flag-soft);font-weight:700}
+.lbr .n{font-weight:800;color:var(--muted)}
+.lbr .h{font-size:.8rem;color:var(--muted);text-align:right}
+.lbr .s{text-align:right;font-weight:800;font-size:1.05rem}
+.lbr.head{background:var(--bg);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:8px 14px}
+.lbgap{text-align:center;color:var(--muted);padding:4px;font-size:.8rem;border-bottom:1px solid var(--line)}
+.lbgap:last-child{border-bottom:0}
+.dist{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:6px}
+.dist i{flex:1;background:rgba(255,255,255,.25);border-radius:3px 3px 0 0}
+.dist i.you{background:#FFD36E}
+.stn{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.stn:last-child{border-bottom:0}
+.chips.hscroll{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;scrollbar-width:none}
+.chips.hscroll::-webkit-scrollbar{display:none}
+.chips.hscroll .chip{flex:0 0 auto;padding:7px 14px;white-space:nowrap;border-radius:999px;min-height:0}
