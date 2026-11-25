@@ -224,3 +224,13 @@ button,a,input,select,textarea,label,[data-act]{touch-action:manipulation}
 .herogrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .herogrid>div{background:rgba(255,255,255,.1);border-radius:14px;padding:10px;display:grid;gap:2px}
 .herogrid b{font-family:var(--display);font-size:1.7rem;line-height:1;color:#FFD36E}.herogrid span{font-size:.76rem;color:rgba(255,255,255,.8);line-height:1.3}
+.herotog{display:flex;gap:4px;background:rgba(255,255,255,.1);border-radius:999px;padding:3px}
+.herotog button{flex:1;border:0;background:transparent;color:rgba(255,255,255,.8);font-weight:600;font-size:.82rem;padding:8px 6px;border-radius:999px;white-space:nowrap}
+.herotog button.on{background:#fff;color:var(--accent)}
+.herostat{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.1);border-radius:14px;padding:12px 14px;font-size:.92rem;line-height:1.35}
+.herostat>b{font-family:var(--display);font-size:2.3rem;line-height:1;color:#FFD36E}
+.herorow b.gpos{color:#9BEBB6}.herorow b.gneg{color:#FFB3A6}
+.herorow{grid-template-columns:1fr auto 40px 86px}
+.herorow b{white-space:nowrap}
+.leaveout.on{border-color:var(--flag);background:var(--flag-soft)}
+.tag.out{background:#EDEFEC;border-color:#C9CFCB;color:#5E6B64}
