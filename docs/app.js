@@ -305,9 +305,162 @@ function goalRows(){
 const PLACES=[['range','Range'],['green','Putting green'],['short','Chipping and bunker area'],['home','Home']];
 // Drill library. Each drill says which shot losses it fixes (0–1), where it can be done, how long it suits and what kind it is.
 // The plan picks the best mix for the golfer's focus goals, time and places, and the Shuffle button swaps in alternatives.
+// ----- Drill pictures (style D): every scene sits on the same floating island, viewed three-quarter on, with timber tees, white balls,
+// a red flag, dotted white shot lines and dark pill labels. Built as inline SVG so they load instantly and work offline.
+const DRILL_ART=(()=>{
+
+const K={bg:'#F4F1EA',g0:'#8CC48F',g1:'#6DAE74',g2:'#57985F',fringe:'#4C8655',rough:'#3F7A4A',rough2:'#4A8957',sand0:'#F1E3BE',sand1:'#E2CD98',sandLip:'#C9AE73',
+  peg:'#D9B888',pegTop:'#E8CDA3',pegLine:'#9C7A4A',shadow:'rgba(20,40,20,.25)',cupRim:'#2A3A2C',cup:'#121A13',line:'rgba(255,255,255,.92)',stick:'#FFFFFF',flag:'#C2402F',pill:'rgba(20,60,30,.62)',
+  floor:'#D9C9AB',floorRim:'#B9A47F',wall:'#EDE6D8',water:'#6FA8C9',water2:'#8BBCD8',tree:'#2F6339',tree2:'#3D7A47'};
+let _n=0;
+const defs=id=>`<defs><radialGradient id="g${id}" cx="50%" cy="42%" r="62%"><stop offset="0" stop-color="${K.g0}"/><stop offset=".7" stop-color="${K.g1}"/><stop offset="1" stop-color="${K.g2}"/></radialGradient>
+ <radialGradient id="b${id}" cx="38%" cy="35%" r="70%"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#DDE3DF"/></radialGradient>
+ <linearGradient id="s${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${K.sand1}"/><stop offset=".35" stop-color="${K.sand0}"/><stop offset="1" stop-color="${K.sand0}"/></linearGradient>
+ <linearGradient id="f${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${K.g2}"/><stop offset="1" stop-color="${K.g0}"/></linearGradient></defs>`;
+const svg=(id,inner)=>`<svg viewBox="0 0 340 236" width="340" height="236">${defs(id)}${inner}</svg>`;
+const island=(fill,rim)=>`<ellipse cx="170" cy="136" rx="164" ry="88" fill="${rim}"/><ellipse cx="170" cy="131" rx="158" ry="83" fill="${fill}"/>`;
+const greenIsland=id=>island(`url(#g${id})`,K.fringe);
+const tee=(x,y)=>`<g><ellipse cx="${x+3}" cy="${y+1}" rx="4.5" ry="1.6" fill="${K.shadow}"/><path d="M${x-1.3} ${y} L${x-1.6} ${y-9} L${x+1.6} ${y-9} L${x+1.3} ${y} Z" fill="${K.peg}" stroke="${K.pegLine}" stroke-width=".6"/><ellipse cx="${x}" cy="${y-9.2}" rx="3.6" ry="1.5" fill="${K.pegTop}" stroke="${K.pegLine}" stroke-width=".6"/></g>`;
+const ball=(id,x,y,r=4.6,c)=>`<ellipse cx="${x+2.5}" cy="${y+1.3}" rx="${r+1.3}" ry="${r*.42}" fill="${K.shadow}"/><circle cx="${x}" cy="${y-r+.8}" r="${r}" fill="${c||`url(#b${id})`}" stroke="#C3CBC6" stroke-width=".5"/>`;
+const hole=(x,y,h=84,s=1)=>`<ellipse cx="${x}" cy="${y}" rx="${7.5*s}" ry="${3.8*s}" fill="${K.cupRim}"/><ellipse cx="${x}" cy="${y+.6}" rx="${6*s}" ry="${2.6*s}" fill="${K.cup}"/>${h?`<line x1="${x-1}" y1="${y}" x2="${x-36*s}" y2="${y+9*s}" stroke="${K.shadow}" stroke-width="2" stroke-linecap="round"/><line x1="${x}" y1="${y-1}" x2="${x}" y2="${y-h}" stroke="${K.stick}" stroke-width="${2.2*s}" stroke-linecap="round"/><path d="M${x+1} ${y-h} L${x+30*s} ${y-h+7*s} L${x+1} ${y-h+15*s} Z" fill="${K.flag}"/>`:''}`;
+const rflag=(x,y,s=1)=>`<ellipse cx="${x+2}" cy="${y}" rx="${4*s}" ry="${1.4*s}" fill="${K.shadow}"/><line x1="${x}" y1="${y}" x2="${x}" y2="${y-30*s}" stroke="#fff" stroke-width="${1.8*s}"/><path d="M${x+.5} ${y-30*s} l${16*s} ${4.5*s} l${-16*s} ${4.5*s}z" fill="${K.flag}"/>`;
+const pill=(x,y,t)=>{ const w=Math.max(30,t.length*6+16); x=Math.min(318-w/2,Math.max(22+w/2,x)); return `<g transform="translate(${x} ${y})"><rect x="${-w/2}" y="-8.5" width="${w}" height="17" rx="8.5" fill="${K.pill}"/><text text-anchor="middle" y="3.6" font-size="9.5" font-weight="700" font-family="Inter,system-ui,sans-serif" fill="#fff">${t}</text></g>`; };
+const path=(d,dash='1 4',w=1.3,c=K.line)=>`<path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" stroke-dasharray="${dash}" stroke-linecap="round"/>`;
+const blades=pts=>pts.map(([x,y])=>`<path d="M${x} ${y} l1.5 -6 M${x+3} ${y+1} l-.5 -5.5 M${x+5} ${y} l2 -5" stroke="#2F6339" stroke-width="1" stroke-linecap="round"/>`).join('');
+const ring=(cx,cy,r,o=.45)=>`<ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${r/2}" fill="none" stroke="rgba(255,255,255,${o})" stroke-width=".9"/>`;
+const zone=(cx,cy,rx,ry)=>`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="rgba(255,255,255,.22)" stroke="#fff" stroke-width="1.2" stroke-dasharray="3 3"/>`;
+const mat=(x=170,y=210)=>`<path d="M${x-24} ${y-6} L${x+24} ${y-6} L${x+28} ${y+6} L${x-28} ${y+6} Z" fill="#2F6B3B"/><path d="M${x-20} ${y-5} L${x+20} ${y-5} L${x+23} ${y+4} L${x-23} ${y+4} Z" fill="#3C8048"/>`;
+const rangeIsland=id=>island(K.rough2,K.rough)+`<path d="M128 52 C 150 48, 190 48, 212 52 L304 168 C 252 214, 88 214, 36 168 Z" fill="url(#f${id})"/>`+blades([[30,140],[44,160],[296,150],[312,132],[60,120],[280,118]])+mat();
+const homeIsland=()=>island(K.floor,K.floorRim)+Array.from({length:7},(_,i)=>`<line x1="${30+i*44}" y1="${60+Math.abs(3-i)*8}" x2="${10+i*50}" y2="${212-Math.abs(3-i)*8}" stroke="rgba(120,90,50,.15)" stroke-width="1"/>`).join('');
+const bunker=(id,cx,cy,rx,ry)=>`<ellipse cx="${cx}" cy="${cy-2}" rx="${rx+6}" ry="${ry+5}" fill="${K.sandLip}"/><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#s${id})"/>`;
+const greenOn=(id,cx,cy,rx,ry)=>`<ellipse cx="${cx}" cy="${cy+3}" rx="${rx+7}" ry="${ry+5}" fill="${K.fringe}"/><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#g${id})"/>`;
+const water=(d)=>`<path d="${d}" fill="${K.water}"/><path d="${d}" fill="none" stroke="${K.water2}" stroke-width="2" opacity=".6"/>`;
+const trees=pts=>pts.map(([x,y,s=1])=>`<ellipse cx="${x+4}" cy="${y+2}" rx="${10*s}" ry="${3.5*s}" fill="${K.shadow}"/><circle cx="${x}" cy="${y-10*s}" r="${10*s}" fill="${K.tree}"/><circle cx="${x-3*s}" cy="${y-13*s}" r="${6*s}" fill="${K.tree2}"/>`).join('');
+const A={}, IDS=["tee12", "gate", "clock", "fifty", "coin", "ladder", "circle", "readroll", "fringe", "lag9", "eyes", "hall", "line", "bunker5", "spot", "badlie", "bump", "fputt", "ud9", "basket", "chipladder", "wclock", "towel", "rand3", "callit", "nine", "middle", "playcourse", "layup", "hyb", "gates", "safe", "missside", "tee3", "speed", "strike"]; let ai=0; const add=(t,type,mins,where,fn)=>{ const k=IDS[ai++]; A[k]=()=>svg('d'+k,fn('d'+k)); };
+
+// ===== Putting =====
+add('12-tee drill','Pressure','10–20','Putting green',id=>{ const cx=170,cy=132,R=[44,88,132],k=.5,ang=[1,3,5,7].map(i=>i*Math.PI/4); const pts=[]; R.forEach(r=>ang.forEach(a=>pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)*k]))); pts.sort((a,b)=>a[1]-b[1]);
+  const [bx,by]=[cx+88*Math.cos(ang[0]),cy+88*Math.sin(ang[0])*k];
+  return greenIsland(id)+R.map(r=>ring(cx,cy,r)).join('')+pts.filter(p=>p[1]<=cy).map(p=>tee(...p)).join('')+hole(cx,cy)+path(`M${bx-7} ${by-3} C ${bx-30} ${by-2}, ${cx+30} ${cy+20}, ${cx+7} ${cy+3}`)+pts.filter(p=>p[1]>cy).map(p=>tee(...p)).join('')+ball(id,bx-7,by)+R.map((r,i)=>pill(cx+r-6,cy,['1 m','2 m','3 m'][i])).join(''); });
+add('Gate drill','Technique','5–15','Putting green or home',id=>{ const hx=178,hy=82,bx=162,by=194,gx=bx+(hx-bx)*.3,gy=by+(hy-by)*.3;
+  return greenIsland(id)+hole(hx,hy)+path(`M${bx} ${by-4} L${hx} ${hy+2}`)+tee(gx-12,gy)+tee(gx+12,gy)+ball(id,bx,by,5)+pill(gx+48,gy-2,'Gate')+pill(hx+42,hy+30,'1 m'); });
+add('Clock drill','Pressure','10–15','Putting green',id=>{ const cx=170,cy=136,r=58; const pts=[0,1,2,3,4,5].map(i=>{ const a=-Math.PI/2+i*Math.PI/3; return [cx+r*Math.cos(a),cy+r*Math.sin(a)/2]; }).sort((a,b)=>a[1]-b[1]);
+  return greenIsland(id)+ring(cx,cy,r)+pts.filter(p=>p[1]<=cy).map(p=>ball(id,...p)).join('')+hole(cx,cy)+path(`M${pts[4][0]} ${pts[4][1]-4} L${cx+3} ${cy+2}`)+pts.filter(p=>p[1]>cy).map(p=>ball(id,...p)).join('')+pill(cx+r+28,cy,'1 m'); });
+add('50 in a row','Pressure','10–20','Putting green',id=>{ const hx=170,hy=96,bx=170,by=170;
+  const pile=[[118,196],[128,200],[110,204],[122,208],[134,206],[104,196],[140,198],[116,214],[130,214],[144,210],[98,206],[108,214]];
+  return greenIsland(id)+hole(hx,hy)+path(`M${bx} ${by-4} L${hx} ${hy+2}`)+pile.sort((a,b)=>a[1]-b[1]).map(p=>ball(id,...p,3.8)).join('')+ball(id,bx,by,5)+pill(206,134,'1 m')+pill(122,180,'50 in a row'); });
+add('Coin start line','Technique','5–10','Putting green or home',id=>{ const hx=176,hy=80,bx=164,by=192,cx2=bx+(hx-bx)*.22,cy2=by+(hy-by)*.22;
+  return greenIsland(id)+hole(hx,hy)+path(`M${bx} ${by-4} L${hx} ${hy+2}`)+`<ellipse cx="${cx2+1}" cy="${cy2+1}" rx="5.5" ry="2.4" fill="${K.shadow}"/><ellipse cx="${cx2}" cy="${cy2}" rx="5" ry="2.2" fill="#E3B341" stroke="#A97E1C" stroke-width=".7"/>`+ball(id,bx,by,5)+pill(cx2+46,cy2,'Coin, 30 cm')+pill(hx+46,hy+26,'Roll over it'); });
+add('Ladder','Skill','10–20','Putting green',id=>{ const hx=176,hy=66; const B=[[172,118],[168,160],[163,200]];
+  return greenIsland(id)+hole(hx,hy,60)+path(`M${B[2][0]} ${B[2][1]-4} L${hx} ${hy+2}`)+B.map(p=>ball(id,...p)).join('')+B.map((p,i)=>pill(p[0]+44,p[1]-3,['2 m','4 m','6 m'][i])).join('')+pill(92,150,'3 of 10 to move on'); });
+add('Three-metre game','Game','10–15','Putting green',id=>{ const cx=170,cy=128,r=100; const A=[-150,-118,-70,-30,10,40,80,115,150,185].map(d=>d*Math.PI/180); const pts=A.map(a=>[cx+r*Math.cos(a),cy+r*Math.sin(a)/2]).sort((a,b)=>a[1]-b[1]);
+  return greenIsland(id)+ring(cx,cy,r,.35)+pts.filter(p=>p[1]<=cy).map(p=>ball(id,...p,4)).join('')+hole(cx,cy)+pts.filter(p=>p[1]>cy).map(p=>ball(id,...p,4)).join('')+pill(cx+r+2,cy+16,'3 m')+pill(cx,cy+76,'10 different putts'); });
+add('Read and roll','Skill','10–15','Putting green',id=>{ const hx=170,hy=100, a=[86,170], b=[254,170];
+  return greenIsland(id)+`<path d="M60 70 L104 70" stroke="#fff" stroke-width="1.6" marker-end="url(#ar${id})"/><defs><marker id="ar${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#fff"/></marker></defs>`
+   +hole(hx,hy)+path(`M${a[0]+4} ${a[1]-6} C ${a[0]+10} ${a[1]-50}, ${hx-60} ${hy+30}, ${hx-6} ${hy+2}`)+path(`M${b[0]-4} ${b[1]-6} C ${b[0]-40} ${b[1]-10}, ${hx+10} ${hy+40}, ${hx+5} ${hy+3}`)
+   +ball(id,...a)+ball(id,...b)+pill(82,56,'Slope')+pill(86,194,'From above')+pill(254,194,'From below')+pill(hx+56,hy+28,'4 m'); });
+add('Fringe finish','Skill','10–20','Putting green',id=>{ const hx=176,hy=88,bx=150,by=204;
+  return greenIsland(id)+zone(hx+4,hy-10,26,8)+hole(hx,hy)+path(`M${bx} ${by-4} L${hx+3} ${hy-8}`)+ball(id,bx,by)+[[110,196],[196,206]].map(p=>ball(id,...p,4)).join('')+pill(hx+70,hy-10,'Finish zone')+pill(98,168,'10, 15, 20 m'); });
+add('Lag nine','Game','15–25','Putting green',id=>{ const H=[[96,84],[176,64],[256,92],[128,140],[230,150]];
+  return greenIsland(id)+H.map(([x,y])=>hole(x,y,32,.55)).join('')+path(`M150 206 L230 152`)+path(`M110 200 L130 142`)+ball(id,150,206)+ball(id,110,200)+pill(170,186,'9 holes · 10–20 m')+pill(270,178,'Par 2 each'); });
+add('Eyes-closed lag','Technique','5–10','Putting green',id=>{ const hx=180,hy=80,bx=160,by=200;
+  return greenIsland(id)+hole(hx,hy)+path(`M${bx} ${by-4} L${hx-3} ${hy+22}`)+ball(id,bx,by)+`<circle cx="${hx-3}" cy="${hy+22}" r="4.2" fill="none" stroke="#fff" stroke-width="1.2" stroke-dasharray="2 2"/>`+pill(hx+40,hy+30,'Long or short?')+pill(bx-62,by-14,'Eyes closed'); });
+add('Hallway speed','Skill','5–15','Home',id=>homeIsland()+`<path d="M118 50 L222 50 L222 92 L118 92 Z" fill="${K.wall}" stroke="#CFC4AE"/><path d="M118 92 L222 92" stroke="#B9A47F" stroke-width="2"/>`
+   +`<path d="M128 94 L212 94 L248 210 L92 210 Z" fill="#C9A97A" opacity=".55"/>`+zone(170,104,40,7)+path(`M168 198 L170 106`)+ball(id,168,200)+pill(170,128,'Stop within a putter length')+pill(170,40+12,'Wall'));
+
+// ===== Chipping and bunkers =====
+add('Line drill','Technique','10–15','Bunker',id=>greenIsland(id)+`<ellipse cx="226" cy="84" rx="74" ry="24" fill="${K.g0}" opacity=".7"/>`+hole(240,84,54,.75)+bunker(id,166,155,120,45)
+   +`<path d="M72 168 L262 140" stroke="#7A5E2E" stroke-width="2.2" stroke-linecap="round" opacity=".75"/>`+[[96,164],[134,158],[172,153],[210,147]].map(([x,y])=>`<ellipse cx="${x-5}" cy="${y+4}" rx="9" ry="2.8" fill="rgba(122,94,46,.2)"/>`).join('')
+   +[[118,176],[156,170],[194,164]].map(([x,y])=>`<path d="M${x} ${y} l6 -1 l-3 -3" stroke="#fff" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".85"/>`).join('')+pill(170,198,'Hit the line, step forward'));
+add('Bunker up-and-down','Game','10–20','Bunker',id=>{ const B=[[110,166],[140,174],[170,168],[200,176],[228,166]];
+  return island(K.rough2,K.rough)+greenOn(id,174,84,100,32)+hole(188,80,58,.8)+bunker(id,170,166,118,40)+B.map(p=>ball(id,...p,4.2)).join('')+path(`M170 162 Q 186 110, 200 84`,'2 4')+pill(170,204,'5 balls, hole each one')+pill(282,128,'Par 15'); });
+add('Landing spot','Skill','10–15','Chipping area',id=>{ const bx=86,by=178,sx=168,sy=138,hx=248,hy=100;
+  return island(K.rough2,K.rough)+greenOn(id,206,108,100,44)+blades([[40,150],[58,168],[70,196],[100,200],[124,186],[46,186],[140,204],[84,152],[110,160]])+hole(hx,hy,70,.9)
+   +`<ellipse cx="${sx}" cy="${sy}" rx="10" ry="4.2" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="2 2.5"/>`+path(`M${bx+2} ${by-9} Q ${bx+30} ${by-96}, ${sx-2} ${sy-3}`,'2 4')+path(`M${sx+6} ${sy-2} L${hx-6} ${hy+2}`)+ball(id,bx,by)+pill(sx+2,sy+20,'Land here')+pill(226,128,'Let it roll'); });
+add('Worst lie','Skill','10–15','Chipping area',id=>{ const hx=230,hy=92;
+  return island(K.rough2,K.rough)+greenOn(id,208,104,100,42)+hole(hx,hy,64,.85)+`<path d="M64 160 Q 98 126, 132 160" fill="${K.rough}" opacity=".8"/>`
+   +blades([[74,176],[82,180],[90,176],[78,184]])+ball(id,84,186,4.2)+ball(id,98,150,4.2)+ball(id,112,112,4.2)+blades([[40,196],[150,200],[120,196]])
+   +pill(84,206,'Down in the rough')+pill(60,134,'On a slope')+pill(112,90,'Against the collar')+pill(246,180,'5 bad lies'); });
+add('Bump and run','Skill','10–15','Chipping area',id=>{ const bx=70,by=164,lx=130,ly=136,hx=262,hy=100;
+  return island(K.rough2,K.rough)+greenOn(id,200,112,108,48)+hole(hx,hy,70,.9)+path(`M${bx+2} ${by-8} Q ${bx+18} ${by-36}, ${lx} ${ly-2}`,'2 4')+path(`M${lx+4} ${ly-2} L${hx-6} ${hy+2}`)
+   +`<ellipse cx="${lx}" cy="${ly}" rx="8" ry="3.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-dasharray="2 2.5"/>`+ball(id,bx,by)+pill(86,190,'8 iron off the fringe')+pill(214,146,'Runs like a putt')+pill(118,112,'Land just on'); });
+add('Putt from the fringe','Skill','5–10','Putting green',id=>{ const bx=92,by=150,hx=230,hy=104;
+  return island(K.rough2,K.rough)+greenOn(id,196,116,108,50)+hole(hx,hy)+path(`M${bx+4} ${by-5} L${hx-6} ${hy+2}`)+ball(id,bx,by)+pill(92,174,'On the fringe')+pill(214,152,'Putt it when you can'); });
+add('Up-and-down nine','Pressure','20–30','Chipping area',id=>{ const cx=170,cy=118; const S=[...Array(9)].map((_,i)=>{ const a=(-160+i*40)*Math.PI/180; return [cx+142*Math.cos(a),cy+66*Math.sin(a)+10]; }).sort((a,b)=>a[1]-b[1]);
+  return island(K.rough2,K.rough)+greenOn(id,cx,cy,92,40)+S.filter(p=>p[1]<=cy).map(p=>ball(id,...p,4.2)).join('')+hole(cx-22,cy-2,56,.85)+S.filter(p=>p[1]>cy).map(p=>ball(id,...p,4.2)).join('')+pill(cx,cy+30,'9 spots · target 5'); });
+add('Basket chips','Skill','5–15','Home',id=>{ const kx=214,ky=104;
+  return homeIsland()+`<ellipse cx="${kx+4}" cy="${ky+30}" rx="30" ry="7" fill="rgba(80,60,30,.2)"/><path d="M${kx-28} ${ky} L${kx+28} ${ky} L${kx+22} ${ky+30} L${kx-22} ${ky+30} Z" fill="#EFE7D6" stroke="#B9A47F"/><ellipse cx="${kx}" cy="${ky}" rx="28" ry="7" fill="#D9CDB4" stroke="#B9A47F"/>`
+   +[0,1,2,3].map(i=>`<line x1="${kx-24+i*16}" y1="${ky+4}" x2="${kx-19+i*13}" y2="${ky+29}" stroke="#CDBF9F"/>`).join('')+path(`M110 186 Q 150 60, ${kx-4} ${ky-2}`,'2 4',1.4,'#8A6E44')+ball(id,110,190,4.6,'#F6E58D')+ball(id,92,198,4.2,'#F6E58D')+ball(id,126,202,4.2,'#F6E58D')+pill(110,166,'5 m')+pill(kx+2,ky+48,'Foam balls'); });
+add('Chip ladder','Technique','10–15','Chipping area',id=>{ const bx=70,by=182, L=[[128,152],[176,128],[224,104]], hx=262,hy=90;
+  return island(K.rough2,K.rough)+greenOn(id,196,114,106,48)+hole(hx,hy,60,.8)+L.map(([x,y])=>`<ellipse cx="${x}" cy="${y}" rx="9" ry="3.8" fill="none" stroke="#fff" stroke-width="1.4" stroke-dasharray="2 2.5"/>`).join('')
+   +L.map(([x,y],i)=>path(`M${bx+2} ${by-8} Q ${(bx+x)/2} ${by-40-i*22}, ${x} ${y-2}`,'2 4')).join('')+ball(id,bx,by)+L.map(([x,y],i)=>pill(x+4,y+18,['3 paces','6','9'][i])).join('')+pill(76,206,'One club'); });
+
+// ===== Approach (range) =====
+add('Wedge clock','Technique','15–25','Range',id=>rangeIsland(id)+[[150,150,.6],[176,112,.75],[198,76,.9]].map(([x,y,s])=>rflag(x,y,s)).join('')+[[150,152],[176,114],[198,78]].map(([x,y],i)=>path(`M170 202 Q ${(170+x)/2-10} ${y-30-i*10}, ${x} ${y}`,'2 4')).join('')+pill(110,152,'Short')+pill(126,112,'Half')+pill(150,72,'Full')+pill(250,180,'Note every carry'));
+add('Landing towel','Skill','10–15','Range or chipping area',id=>rangeIsland(id)+`<path d="M152 120 L194 120 L198 134 L148 134 Z" fill="#FFFFFF" stroke="#D9D9D0"/><path d="M152 124 L194 124" stroke="#E7A8A0" stroke-width="2"/>`+path(`M170 202 Q 150 100, 168 126`,'2 4')+path(`M170 202 Q 196 112, 180 128`,'2 4')+pill(170,150,'Towel, 30–60 m')+pill(260,182,'Land it on the towel'));
+add('Random three','Pressure','10–20','Range',id=>rangeIsland(id)+rflag(132,150,.6)+rflag(206,110,.75)+rflag(160,76,.9)+path(`M170 202 Q 220 140, 206 112`,'2 4')+pill(100,152,'40 m')+pill(244,112,'60 m')+pill(120,72,'80 m')+pill(250,184,'Random order'));
+add('Call it','Game','10–20','Range',id=>rangeIsland(id)+rflag(140,130,.65)+rflag(202,96,.8)+rflag(162,68,.9)+path(`M170 202 Q 210 120, 202 98`,'2 4')+pill(106,132,'110 m')+pill(240,98,'130 m')+pill(124,66,'150 m')+pill(250,184,'Call it before you hit'));
+add('Nine-ball flight','Skill','15–20','Range',id=>rangeIsland(id)+rflag(170,80,.9)+[-1,0,1].map(c=>[0,1,2].map(h=>path(`M170 202 Q ${170+c*55} ${170-h*45}, 170 82`,'1 3',1.1)).join('')).join('')+pill(90,140,'Draw')+pill(250,140,'Fade')+pill(170,60,'Low · mid · high'));
+add('Middle of the green','Skill','10–15','Range',id=>rangeIsland(id)+greenOn(id,170,92,52,16)+rflag(206,92,.8)+zone(170,92,12,5)+path(`M170 202 L170 94`)+pill(128,120,'Aim here')+pill(240,112,'Not the flag')+pill(250,184,'5 or 6 iron'));
+add('Play Glenelg on the range','Game','25–40','Range',id=>rangeIsland(id)+zone(150,130,30,10)+greenOn(id,200,76,30,10)+rflag(204,76,.7)+path(`M170 202 Q 140 150, 150 132`,'2 4')+path(`M150 130 Q 180 80, 200 78`,'2 4')+pill(100,136,'Tee shot')+pill(254,82,'Approach')+pill(250,184,'Hole 1 of 9'));
+add('Layup ladder','Skill','10–15','Range',id=>rangeIsland(id)+rflag(170,70,.9)+zone(146,124,22,7)+path(`M170 202 Q 200 110, 172 72`,'2 4')+path(`M170 202 Q 140 150, 146 126`,'2 4')+pill(228,94,'Long club')+pill(96,128,'Layup')+pill(250,184,'Compare the finish'));
+add('Hybrid vs long iron','Skill','10–20','Range',id=>rangeIsland(id)+rflag(170,72,.9)+path(`M170 202 Q 150 100, 164 76`,'2 4')+path(`M170 202 Q 204 110, 180 78`,'2 4',1.3,'#F3D9A4')+pill(110,110,'Hybrid')+pill(234,110,'Long iron')+pill(214,64,'200 m'));
+
+// ===== Driving =====
+add('Fairway gates','Game','10–20','Range',id=>island(K.rough2,K.rough)+`<path d="M128 56 C 150 52, 190 52, 212 56 L300 170 C 250 214, 90 214, 40 170 Z" fill="url(#f${id})"/>`+blades([[30,140],[44,160],[296,150],[312,132],[60,120],[280,118]])+mat()
+   +rflag(118,84)+rflag(222,84)+path(`M168 202 Q 138 120, 120 88`,'2 4')+path(`M172 202 Q 204 120, 220 88`,'2 4')+tee(170,212)+ball(id,170,205,4)+pill(118,104,'Target 1')+pill(222,104,'Target 2')+pill(170,70,'30 m apart'));
+add('Safe club','Skill','10–15','Range',id=>island(K.rough2,K.rough)+`<path d="M140 50 C 160 46, 186 46, 204 50 L262 170 C 228 212, 112 212, 78 170 Z" fill="url(#f${id})"/>`+water(`M228 60 C 270 70, 300 110, 300 150 C 286 160, 262 150, 250 120 C 240 96, 226 80, 228 60 Z`)+trees([[60,110],[48,140,1.1],[74,90,.9]])+mat()
+   +`<line x1="140" y1="104" x2="140" y2="88" stroke="#fff" stroke-width="2"/><line x1="200" y1="104" x2="200" y2="88" stroke="#fff" stroke-width="2"/>`+path(`M170 202 Q 160 140, 168 100`,'2 4')+tee(170,212)+ball(id,170,205,4)+pill(170,120,'30 m gate')+pill(110,184,'3 wood or hybrid')+pill(276,186,'Water'));
+add('Pick your miss side','Skill','10–15','Range',id=>island(K.rough2,K.rough)+`<path d="M130 50 C 152 46, 188 46, 210 50 L290 170 C 246 212, 94 212, 50 170 Z" fill="url(#f${id})"/>`+water(`M232 56 C 280 64, 310 110, 314 150 C 296 160, 270 150, 258 118 C 248 94, 234 76, 232 56 Z`)+mat()
+   +`<path d="M170 204 L104 86 L176 80 Z" fill="rgba(255,255,255,.18)" stroke="rgba(255,255,255,.5)" stroke-dasharray="3 3"/>`+path(`M170 204 L136 84`)+tee(170,212)+ball(id,170,205,4)+pill(126,70,'Aim left of centre')+pill(196,130,'Your miss stays dry')+pill(280,188,'Water right'));
+add('Name it tee test','Pressure','10–15','Range',id=>rangeIsland(id)+rflag(186,84,.85)+path(`M170 202 Q 150 120, 184 86`,'2 4')+tee(170,212)+ball(id,170,205,4)+`<g transform="translate(110 150)"><rect x="-58" y="-18" width="116" height="30" rx="12" fill="#fff"/><path d="M30 12 l14 12 l-2 -12z" fill="#fff"/><text text-anchor="middle" y="1" font-size="10" font-weight="700" font-family="Inter,system-ui,sans-serif" fill="#1E3B29">Target · shape · club</text></g>`+pill(250,184,'Say it, then commit'));
+add('Speed sets','Technique','10–15','Range or home',id=>rangeIsland(id)+`<g transform="translate(170 196)">${[0,1,2,3,4].map(i=>`<path d="M${-70+i*4} ${-20-i*12} A 80 70 0 0 0 ${70-i*4} ${-20-i*12}" fill="none" stroke="#fff" stroke-width="${2.6-i*.4}" opacity="${.85-i*.15}" stroke-linecap="round"/>`).join('')}</g>`+tee(170,212)+ball(id,170,205,4)+pill(170,96,'Full speed')+pill(90,186,'3 × 5 swings')+pill(250,186,'Rest between sets'));
+add('Strike check','Technique','10–15','Range',id=>`<rect width="340" height="236" fill="none"/><ellipse cx="174" cy="132" rx="128" ry="76" fill="rgba(20,40,20,.12)"/><path d="M56 120 C 60 66, 150 46, 230 56 C 300 64, 318 116, 300 160 C 284 198, 200 206, 130 198 C 72 192, 52 160, 56 120 Z" fill="#2C2F33"/><path d="M70 122 C 74 76, 150 60, 226 68 C 290 76, 304 116, 290 154 C 276 186, 200 192, 134 186 C 84 180, 66 156, 70 122 Z" fill="#3A3E43"/>`
+   +[0,1,2,3,4,5,6].map(i=>`<line x1="${92}" y1="${88+i*14}" x2="${282}" y2="${88+i*14}" stroke="rgba(255,255,255,.08)" stroke-width="1.4"/>`).join('')+`<ellipse cx="184" cy="128" rx="30" ry="22" fill="rgba(255,255,255,.08)" stroke="#fff" stroke-dasharray="3 3"/>`
+   +[[176,124],[190,132],[168,138],[214,110],[150,150]].map(([x,y],i)=>`<ellipse cx="${x}" cy="${y}" rx="7" ry="5" fill="rgba(255,255,255,${i<3?.75:.45})"/>`).join('')+pill(184,172,'Centre strikes')+pill(250,92,'Foot spray on the face')+pill(110,212,'10 drives'));
+
+return A;
+})();
+const DRILL_STEPS={
+ gate:['Find a straight putt about 1 m from the hole.','Push two tees in just wider than a ball, about 30 cm in front of it.','Roll every putt through the gate and into the hole. Clip a tee and your start line was off.','Score: makes out of 30.'],
+ clock:['Place six balls in a circle 1 m from the hole, like the numbers on a clock.','Hole all six, then move the circle out to 1.5 m.','Miss one and start that circle again.','Score: the longest run of makes.'],
+ fifty:['Find a straight 1 m putt and tip out a pile of balls beside you.','Hole 50 in a row with your full routine on every putt.','Miss one and the count goes back to zero.','Score: your best run. Keep going until you hit 50 or your time is up.'],
+ coin:['Set up a straight 2–3 m putt. Place a coin on your line about 30 cm in front of the ball.','Roll every putt over the coin. Ignore the hole and focus on the start line.','At home, putt along the carpet towards a target with the coin in the same spot.','Score: putts over the coin, out of 20.'],
+ ladder:['Line up balls at 2, 4 and 6 m from one hole.','Start at 2 m and stay there until you hole 3 out of 10.','Move back to 4 m, then 6 m. Read every putt as if it counts.','Score: the total number of balls it took to finish the ladder.'],
+ circle:['Pick ten different 3 m putts around the practice green: uphill, downhill and breaking both ways.','Play each one with your full routine, one ball only.','Tour players hole about 4 in 10 from this distance.','Score: makes out of 10.'],
+ readroll:['Find a 4 m putt with plenty of break.','Hit balls from above the hole, then from below it, and watch how the line changes.','Try one firm and one dying at the hole from each side to see how speed changes break.','Score: makes out of 10.'],
+ fringe:['Pick a hole and putt from 10, 15 and 20 m.','Your target is to finish every ball between the hole and one putter length past it.','Short counts as a miss, even if it is close.','Score: balls in the finish zone, out of 15.'],
+ lag9:['Pick nine holes on the practice green, each 10–20 m from the last.','Play them like a round: one ball, putt out every hole.','Two putts is par on each hole.','Score: your total against 18.'],
+ eyes:['Set up a long putt, 10 m or more.','Look at the hole, then close your eyes and make your stroke.','Before you open them, call long, short or good.','Score: correct calls out of 10. It trains your feel for distance.'],
+ hall:['Find a hallway or long room with a wall at the end.','Putt towards the wall and try to stop the ball within a putter length of it.','Touching the wall counts as a miss.','Score: out of 10.'],
+ line:['Draw a straight line in the sand across your stance.','Hit the sand on the line or just behind it. No ball needed to start.','Step forward along the line after each swing, then add a ball once you are hitting it every time.','Score: clean splashes in a row.'],
+ bunker5:['Drop five balls in a greenside bunker.','Play each one out and putt it into the hole.','Count every shot, splash and putt.','Score: total shots. Par is 15.'],
+ spot:['Drop balls in the rough near the green.','Pick a landing spot one pace onto the green, then let the ball roll out to the hole.','Use more loft than you think. Out of the rough the ball comes out with less spin.','Score: balls finishing inside 2 m, out of 15.'],
+ badlie:['Drop five balls in tough spots: down in the rough, on a slope, against the collar.','Chip each one to the same hole.','Work out the shot that gets each one closest, not the prettiest one.','Score: balls inside 2 m, out of 15.'],
+ bump:['Set up just off the green on the fringe or short grass.','Use an 8 iron and a putting-style stroke.','Land the ball just onto the green and let it run like a putt.','Score: balls inside a metre, out of 15.'],
+ fputt:['Set up a few balls just off the edge of the green.','Putt them instead of chipping. When you can putt it, putt it.','Hit it a touch firmer to get through the fringe.','Score: balls inside a metre, out of 10.'],
+ ud9:['Drop a ball at nine different spots around the green: rough, fringe and bunker.','From each spot, chip and putt until the ball is in the hole.','Getting down in two is an up-and-down.','Score: up-and-downs out of 9. The target is 5.'],
+ basket:['Put a laundry basket 5 m away on the floor.','Chip foam balls into it, changing your lie and the distance each time.','Use your normal chipping action and a soft landing.','Score: balls in the basket, out of 20.'],
+ chipladder:['Take one club, like a 9 iron, to the edge of the green.','Land a ball 3 paces onto the green, then 6, then 9.','Change only the length of your swing, not your grip or setup.','Score: balls landing within a club length of each spot, out of 15.'],
+ wclock:['Take each of your wedges to the range.','Hit five balls each with a short, half and full swing.','Write down the carry of every swing in your phone.','Score: a full wedge chart. Add the numbers to My bag.'],
+ towel:['Lay a towel on the range or practice ground 30–60 m away.','Land wedges on the towel, changing your swing length to change the distance.','Move the towel every ten balls.','Score: towel hits out of 20.'],
+ rand3:['Pick targets at 40, 60 and 80 m.','Before every ball, pick one of them at random, never the same one twice in a row.','Go through your full routine every time, like on the course.','Score: balls within 5 m of the target, out of 15.'],
+ callit:['Pick targets at 110, 130 and 150 m.','Say the target out loud before each ball, then change it every shot.','Pick the club for each one as you would on the course.','Score: balls within 10 m, out of 15.'],
+ nine:['Pick one target in the middle of the range.','Hit nine shots: low, medium and high, each one a draw, straight and a fade.','Say the shot before you hit it.','Score: shots that did what you called, out of 9.'],
+ middle:['Take a 5 or 6 iron and find the biggest green or target on the range.','Aim at the middle of it every time, not at the flag.','Notice how many would have found the green even when you missed your line.','Score: balls within 15 m of the middle, out of 10.'],
+ playcourse:['Play the first nine at Glenelg in your head on the range.','For each hole, hit your tee club to a fairway-wide target, then your approach club to a green-sized target.','Use the club you would really use, and play a recovery if the tee shot misses.','Score: fairways and greens hit, out of 9 each.'],
+ layup:['Pick a target too far for your wedges.','Hit one long club at it, then one layup to your favourite wedge distance.','Alternate ten times and compare where each finishes.','Score: layups that finish in your wedge window, out of 10.'],
+ hyb:['Pick a target about 200 m away.','Hit ten balls with your hybrid and ten with your long iron.','Keep the club that finishes closer more often in the bag for that distance.','Score: balls within 20 m with each club, out of 10.'],
+ gates:['Pick two targets on the range about 30 m apart, like two fairways.','Alternate drives between them, changing your aim every ball.','Go through your full routine every time.','Score: fairways hit, out of 14.'],
+ safe:['Think of your three tightest tee shots at your course.','Pick a 30 m wide gate on the range and hit the club you would use on those holes.','Pick the club that keeps it in play, not the one that goes furthest.','Score: balls inside the gate, out of 12.'],
+ missside:['Think about where your misses usually go.','Picture trouble on that side, like water right if you usually miss right.','Aim so that your normal miss still finishes safe.','Score: balls that finish safe, out of 12.'],
+ tee3:['Before each drive, say out loud your target, the shape of the shot and the club.','Then commit fully and hit it.','Rate each drive: fairway 2 points, rough 1, trouble 0.','Score: points out of 20.'],
+ speed:['Take your driver, or an alignment stick at home.','Make five swings as fast as you can, then rest for 30 seconds.','Do three sets. Speed comes from practising swinging fast.','Score: try to feel faster in each set.'],
+ strike:['Spray foot powder or dry shampoo on the face of your driver.','Hit ten drives and check where each one marked the face.','Adjust your tee height and ball position until the marks are in the centre.','Score: centre strikes out of 10.']
+};
 const D=(id,t,areas,places,min,max,type,how,score)=>({id,t,areas,places,min,max,type,how,score});
 const DRILL_LIB=[
-  Object.assign(D('tee12','12-tee drill',{'putt-short':1,'putt-mid':.6},['green'],10,20,'Pressure','Twelve tees around one hole: four at each of three distances, on four sides. Hole every putt, ring by ring.','Clear all 12. Count how many putts it took.'),{art:()=>tee12Art(),
+  Object.assign(D('tee12','12-tee drill',{'putt-short':1,'putt-mid':.6},['green'],10,20,'Pressure','Twelve tees around one hole: four at each of three distances, on four sides. Hole every putt, ring by ring.','Clear all 12. Count how many putts it took.'),{
     steps:()=>{ const d=isFt()?['3 ft','6 ft','9 ft']:['1 m','2 m','3 m']; return [`Pick a hole with some slope and push in 12 tees: four at ${d[0]}, four at ${d[1]} and four at ${d[2]}, one on each side of the hole.`,`Putt from the four ${d[0]} tees, then the ${d[1]} ring, then ${d[2]}. Read each one, as every side breaks differently.`,`Miss and you go back to the first tee of that ring.`,`Clear all 12 and note how many putts it took. Beat it next time.`]; }}),
   D('gate','Gate drill',{'putt-short':1},['green','home'],5,15,'Technique','Two tees just wider than the ball, a metre out. Roll every putt through the gate and into the hole.','Makes out of 30.'),
   D('clock','Clock drill',{'putt-short':1},['green'],10,15,'Pressure','Six balls round the hole at a metre, then a metre and a half. Miss one and restart that ring.','Longest run of makes.'),
@@ -345,6 +498,7 @@ const DRILL_LIB=[
   D('speed','Speed sets',{'ott-fw':1},['range','home'],10,15,'Technique','Three sets of five swings at full speed with a driver or alignment stick, resting between sets.','Feel faster each set.'),
   D('strike','Strike check',{'ott-fw':.6,'ott-rough':.5},['range'],10,15,'Technique','Spray foot powder on the driver face and hit ten. Find the centre and keep it there.','Centre strikes out of 10.')
 ];
+DRILL_LIB.forEach(d=>{ if(DRILL_ART[d.id]) d.art=DRILL_ART[d.id]; if(!d.steps&&DRILL_STEPS[d.id]){ const st=DRILL_STEPS[d.id]; d.steps=()=>st; } });
 const WARMUPS={range:'Wedges up to driver, a few balls each, easy tempo.',green:'Short putts first, then a few long ones to feel the speed.',short:'A few easy chips and pitches to wake the hands up.',home:'Some easy swings and short putts on the carpet.'};
 function rng(seed){ let x=seed*9301+49297; return ()=>{ x=(x*9301+49297)%233280; return x/233280; }; }
 function focusAreas(){
@@ -784,8 +938,8 @@ function tee12Art(){
 }
 function libraryHtml(){
   const groups=[['putt','Putting'],['atg','Chipping and bunkers'],['app','Approach'],['ott','Driving']];
-  return `<details class="card library"><summary><b>Browse all ${DRILL_LIB.length} drills</b><span class="small muted">Tap any drill to see how it works</span></summary>
-    ${groups.map(([c,l])=>{ const ds=DRILL_LIB.filter(d=>Object.keys(d.areas).some(k=>CAT_OF(k)===c&&d.areas[k]>=0.5)); return `<h3 style="margin-top:12px">${l}</h3><div class="liblist">${ds.map(d=>`<button class="libitem" data-act="drill" data-val="${d.id}"><span><b>${esc(d.t)}</b>${d.art?' <span class="tag soft">Picture</span>':''}<br><span class="small muted">${esc(d.type)} · ${d.min}–${d.max} min</span></span><span class="muted">›</span></button>`).join('')}</div>`; }).join('')}
+  return `<details class="card library" ${S.libOpen?'open':''}><summary><b>Browse all ${DRILL_LIB.length} drills</b><span class="small muted">Tap any drill to see how it works</span></summary>
+    ${groups.map(([c,l])=>{ const ds=DRILL_LIB.filter(d=>Object.keys(d.areas).some(k=>CAT_OF(k)===c&&d.areas[k]>=0.5)); return `<h3 style="margin-top:12px">${l}</h3><div class="liblist">${ds.map(d=>`<button class="libitem" data-act="drill" data-val="${d.id}"><span><b>${esc(d.t)}</b><br><span class="small muted">${esc(d.type)} · ${d.min}–${d.max} min</span></span><span class="muted">›</span></button>`).join('')}</div>`; }).join('')}
   </details>`;
 }
 function planHtml(){
@@ -1216,6 +1370,7 @@ document.addEventListener('click',e=>{
   }
   render();
 });
+document.addEventListener('toggle',e=>{ const t=e.target; if(t.classList&&t.classList.contains('library')) S.libOpen=t.open; },true);
 // Inputs update state as you type without redrawing, so a tap on the next button is never lost.
 document.addEventListener('change',e=>{ const el=e.target; if(el.id==='cadphoto'&&el.files&&el.files[0]){ const f=el.files[0]; if(S.cad.url) URL.revokeObjectURL(S.cad.url); S.cad.blob=f; S.cad.url=URL.createObjectURL(f); S.cad.res=null; S.cad.err=''; render(); } });
 document.addEventListener('input',e=>{
