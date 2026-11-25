@@ -219,7 +219,10 @@ function spark(vals){
 // ================= smart assumptions =================
 // When a detail is skipped, fill it with a sensible default and tag it, so logging never stalls.
 // A wrong guess only moves strokes gained between parts of the game on that hole; the hole total is unchanged.
-const statRounds=()=>realRounds().filter(r=>!(S.toughOut&&(r.cond||[]).length));
+// A golfer can leave any round out of their stats (unwell, tired, a write-off). Weather tags can also be left out from My golf.
+const countedRounds=()=>realRounds().filter(r=>!r.excluded);
+const statRounds=()=>countedRounds().filter(r=>!(S.toughOut&&(r.cond||[]).length));
+const LEAVE_WHY=[['weather','Bad weather'],['offday','Just a bad day'],['unwell','Unwell'],['other','Other']];
 function typicalDrive(hcp){ return Math.round(Math.max(150,Math.min(260,245-4*Math.max(-4,Number(hcp)||0)))); }
 function learnedClub(k){ // the golfer's own tee-shot length with a club, once there are 3 real ones
   const xs=[]; realRounds().forEach(r=>r.holes.forEach(h=>{ if(TEE_TO_BAG[h.teeClub]!==k||Number(h.par)<4||!h.teeLie||h.teeLie==='green'||(h.teePen||'none')!=='none'||h.teeDist==null||(h.assumed||[]).includes('teeDist')||(h.unsure||[]).includes('teeDist')) return; xs.push(Number(h.len)-Number(h.teeDist)); }));
@@ -284,7 +287,7 @@ function saveProfile(){ lsSet('sg.profileAt',Date.now()); clearTimeout(profTimer
 const GOAL_EVERY=3;
 // A new set of suggested goals arrives every 3 rounds, built from the biggest shot losses in the last 6.
 function ensureGoals(){
-  const rs=chrono(realRounds()), want=Math.floor(rs.length/GOAL_EVERY); let changed=false;
+  const rs=chrono(countedRounds()), want=Math.floor(rs.length/GOAL_EVERY); let changed=false;
   while(S.goals.sets.length<want){
     const k=S.goals.sets.length, upto=rs.slice(0,(k+1)*GOAL_EVERY), recent=upto.slice(-6);
     const nm=needleMovers(recent);
@@ -297,7 +300,7 @@ function ensureGoals(){
 function moverValue(rounds,key){ const nm=needleMovers(rounds); const all=nm.all||{}; return all[key]!=null?all[key]:0; }
 function goalRows(){
   const set=S.goals.sets[S.goals.sets.length-1]; if(!set) return null;
-  const rs=chrono(realRounds()), after=rs.slice(set.n);
+  const rs=chrono(countedRounds()), after=rs.slice(set.n);
   return {set,after:after.length,items:set.items.map(g=>{ const cur=after.length?moverValue(after,g.k):null;
     const pct=cur==null?0:Math.max(0,Math.min(1,(cur-g.base)/((g.target-g.base)||-1)));
     return {...g,cur,pct,done:cur!=null&&cur>=g.target,focus:S.goals.focus.includes(g.k)}; })};
@@ -671,28 +674,46 @@ const sampleTag=on=>on?'<span class="tag">Sample data</span>':'';
 // ----- home -----
 // ----- Headline insights: plain-English summaries at the top of each tab -----
 const PLAIN={ott:'Off the tee',app:'Into the green',atg:'Around the green',putt:'On the green'}, SAY={ott:'driving',app:'approach play',atg:'chipping',putt:'putting'}, Cap=t=>t[0].toUpperCase()+t.slice(1);
-function snap(rs){ // per-18 strokes gained by part of the game vs the goal handicap, plus scoring
-  const base=String(goalHcp()), o={ott:0,app:0,atg:0,putt:0,total:0,score:0,n:0};
-  rs.forEach(r=>{ const {t}=roundSG(r,base); if(!t.holes) return; const k=18/t.holes; CATS.forEach(([c])=>o[c]+=t[c]*k); o.total+=t.total*k; o.score+=t.score*k; o.n++; });
+const heroMode=()=>S.base==='goal'?'goal':'me';
+const gl=(v,dp=1)=>Math.abs(v)<0.05?'Even':`${v>0?'Gained':'Lost'} ${Math.abs(v).toFixed(dp)}`; // plain words instead of +/−
+const heroToggle=()=>`<div class="herotog" role="group" aria-label="Compare with"><button class="${heroMode()==='me'?'on':''}" data-act="base" data-val="me">vs my handicap ${esc(fmtHcp(S.hcp!=null?S.hcp:10))}</button><button class="${heroMode()==='goal'?'on':''}" data-act="base" data-val="goal">vs my goal ${esc(fmtHcp(goalHcp()))}</button></div>`;
+function snap(rs,mode){ // per-18 strokes gained by part of the game vs the handicap ('me', each round's own) or the goal, plus scoring
+  mode=mode||'goal'; const o={ott:0,app:0,atg:0,putt:0,total:0,score:0,n:0};
+  rs.forEach(r=>{ const {t}=roundSG(r,resolveBase(mode,r)); if(!t.holes) return; const k=18/t.holes; CATS.forEach(([c])=>o[c]+=t[c]*k); o.total+=t.total*k; o.score+=t.score*k; o.n++; });
   if(o.n) ['ott','app','atg','putt','total','score'].forEach(c=>o[c]/=o.n); return o;
 }
 const hcpDrop=shots=>shots*0.9; // roughly: a shot a round saved takes about 0.9 off a handicap index
 function heroRows(o){
   const order=CATS.map(([k])=>({k,v:o[k]})), worst=[...order].sort((a,b)=>a.v-b.v)[0], max=Math.max(1,...order.map(x=>Math.abs(x.v)));
   const word=x=>x.k===worst.k&&x.v<-0.3?['Biggest leak','bad']:x.v<=-0.3?['Losing shots','warn']:x.v>=0.3?['Strength','good']:['On track','ok'];
-  return `<div class="herorows">${order.map(x=>{ const [w,c]=word(x); const pct=Math.round(Math.abs(x.v)/max*50); return `<div class="herorow"><span>${PLAIN[x.k]}</span><span class="hw ${c}">${w}</span><div class="hbar"><i style="${x.v<0?`right:50%;width:${pct}%`:`left:50%;width:${pct}%`}" class="${x.v<0?'neg':'pos'}"></i></div><b class="num">${f1(x.v)}</b></div>`; }).join('')}</div>`;
+  return `<div class="herorows">${order.map(x=>{ const [w,c]=word(x); const pct=Math.round(Math.abs(x.v)/max*50); return `<div class="herorow"><span>${PLAIN[x.k]}</span><span class="hw ${c}">${w}</span><div class="hbar"><i style="${x.v<0?`right:50%;width:${pct}%`:`left:50%;width:${pct}%`}" class="${x.v<0?'neg':'pos'}"></i></div><b class="num ${x.v>0.05?'gpos':x.v<-0.05?'gneg':''}">${gl(x.v)}</b></div>`; }).join('')}</div>`;
 }
 function heroHome(){
   const rs=chrono(statRounds()).slice(-10); if(!rs.length) return '';
-  const o=snap(rs), worst=CATS.map(([k])=>({k,v:o[k]})).sort((a,b)=>a.v-b.v)[0], best=CATS.map(([k])=>({k,v:o[k]})).sort((a,b)=>b.v-a.v)[0], g=esc(fmtHcp(goalHcp()));
-  const head=worst.v<-0.3?`${Cap(SAY[worst.k])} is where most of your shots are going.`:`You're playing like a ${g} golfer right now.`;
-  const fix=Math.abs(Math.min(0,worst.v));
+  const mode=heroMode(), o=snap(rs,mode), parts=CATS.map(([k])=>({k,v:o[k]})), worst=[...parts].sort((a,b)=>a.v-b.v)[0], best=[...parts].sort((a,b)=>b.v-a.v)[0];
+  const h=S.hcp!=null?S.hcp:10, g=esc(fmtHcp(goalHcp())), fix=Math.abs(Math.min(0,worst.v)), playing=Math.max(-5,h-hcpDrop(o.total));
+  let head;
+  if(mode==='me') head = o.total>=0.5?`You're playing better than your handicap.`:o.total<=-0.5?`You're a little off your handicap lately.`:`You're playing right to your handicap.`;
+  else head = worst.v<-0.3?`${Cap(SAY[worst.k])} is what's standing between you and ${g}.`:`You're already playing like a ${g} golfer.`;
   return `<div class="hero">
-    <span class="eyebrow">Your game in 10 seconds · last ${rs.length} round${rs.length>1?'s':''} vs a ${g} golfer</span>
+    ${heroToggle()}
+    <span class="eyebrow">Your game in 10 seconds · last ${rs.length} round${rs.length>1?'s':''}</span>
+    <h2 class="herohead">${head}</h2>
+    ${mode==='me'?`<div class="herostat"><b class="num">${fmtHcp(Math.round(playing*10)/10)}</b><span>is the handicap you've been playing to.<br>${o.total>=0.05?`That's <b>${o.total.toFixed(1)} shots a round better</b> than your ${fmtHcp(h)}.`:o.total<=-0.05?`That's <b>${Math.abs(o.total).toFixed(1)} shots a round</b> off your ${fmtHcp(h)}.`:`Right on your ${fmtHcp(h)}.`}</span></div>`:''}
+    ${heroRows(o)}
+    ${fix>=0.3?`<div class="herofix"><span>Fix your ${SAY[worst.k]} and you'd average</span><b class="num">${Math.round(o.score-fix)}</b><span>instead of <b class="num">${Math.round(o.score)}</b>${mode==='goal'?`. That's about <b>${hcpDrop(fix).toFixed(1)}</b> off your handicap.`:'.'}</span></div>`:''}
+    ${best.v>=0.3?`<span class="herofoot">Your ${SAY[best.k]} is your strength: you gain ${best.v.toFixed(1)} a round there.</span>`:''}
+  </div>`;
+}
+function heroRound(r){
+  const mode=heroMode(), base=resolveBase(mode,r), {t}=roundSG(r,base); if(!t.holes||r.example) return '';
+  const k=18/t.holes, o={total:t.total}; CATS.forEach(([c])=>o[c]=t[c]); const who=mode==='me'?`your ${fmtHcp(myHcp(r))} handicap`:`a ${fmtHcp(goalHcp())} golfer`;
+  const tot=t.total, head=tot>=0.5?`You played <span class="hl">${tot.toFixed(1)} shots better</span> than ${who}.`:tot<=-0.5?`You were <span class="hl">${Math.abs(tot).toFixed(1)} shots</span> off ${who}.`:`You played right to ${who}.`;
+  return `<div class="hero">
+    ${heroToggle()}
+    <span class="eyebrow">How you played${t.holes<18?` · ${t.holes} holes`:''}</span>
     <h2 class="herohead">${head}</h2>
     ${heroRows(o)}
-    ${fix>=0.3?`<div class="herofix"><span>Fix your ${SAY[worst.k]} and you'd average</span><b class="num">${Math.round(o.score-fix)}</b><span>instead of <b class="num">${Math.round(o.score)}</b>. That's about <b>${hcpDrop(fix).toFixed(1)}</b> off your handicap.</span></div>`:''}
-    ${best.v>=0.3?`<span class="herofoot">Your ${SAY[best.k]} is your strength: it's worth ${f1(best.v)} a round.</span>`:''}
   </div>`;
 }
 function heroStats(){
@@ -708,7 +729,7 @@ function heroStats(){
       ${up.d>=0.2?`<div><span class="arrow good">▲</span><span><b>${Cap(SAY[up.k])}</b> is improving: ${f1(up.d)} a round</span></div>`:''}
       ${down.d<=-0.2?`<div><span class="arrow bad">▼</span><span><b>${Cap(SAY[down.k])}</b> has slipped: ${f1(down.d)} a round</span></div>`:''}
     </div>
-    <span class="herofoot">Averaging ${Math.round(recent.score)} over your last 3 rounds, compared with a ${g} golfer.</span>
+    <span class="herofoot">Averaging ${Math.round(recent.score)} over your last 3 rounds.</span>
   </div>`;
 }
 function heroImprove(){
@@ -716,7 +737,7 @@ function heroImprove(){
   const nm=needleMovers(rs).list; if(!nm.length) return '';
   const top=nm[0], next=nm[1], shots=Math.abs(top.v), half=shots/2;
   return `<div class="hero">
-    <span class="eyebrow">Your biggest win</span>
+    <span class="eyebrow">Your biggest win on the way to ${esc(fmtHcp(goalHcp()))}</span>
     <h2 class="herohead">${esc(top.title)} cost you <span class="hl">${shots.toFixed(1)} shots</span> a round.</h2>
     <div class="herogrid">
       <div><b class="num">${half.toFixed(1)}</b><span>shots a round if you halve it</span></div>
@@ -747,7 +768,7 @@ function vHome(){
       <div class="row between"><span class="muted">Total strokes gained per round</span><b class="bigsg ${cls(avg.total)}" style="font-size:2rem">${f1(avg.total)}</b></div>
     </div>
     ${secHead('Rounds','Tap a round for the full breakdown')}
-    <div class="stack">${allRounds().map(r=>{ const {t}=rsg(r,S.base); return `<button class="roundrow" data-act="open" data-id="${esc(r.id)}"><span><b>${esc(r.course)}</b>${r.example?' <span class="tag">Example</span>':''}${r.demo?' <span class="tag">Sample</span>':''}${condTags(r)}<br><span class="small muted">${fmtDate(r.date)} · ${r.holes.length} holes · shot ${t.score}</span></span><span class="bigsg ${cls(t.total)}" style="font-size:1.6rem">${f1(t.total)}</span></button>`; }).join('')}</div>
+    <div class="stack">${allRounds().map(r=>{ const {t}=rsg(r,S.base); return `<button class="roundrow" data-act="open" data-id="${esc(r.id)}"><span><b>${esc(r.course)}</b>${r.example?' <span class="tag">Example</span>':''}${r.demo?' <span class="tag">Sample</span>':''}${r.excluded?' <span class="tag out">Left out</span>':''}${condTags(r)}<br><span class="small muted">${fmtDate(r.date)} · ${r.holes.length} holes · shot ${t.score}</span></span><span class="bigsg ${cls(t.total)}" style="font-size:1.6rem">${f1(t.total)}</span></button>`; }).join('')}</div>
   </div>`;
 }
 function vPath(rounds,isExample){
@@ -786,7 +807,7 @@ function vStats(){
   if(S.statsTab==='mates') return vMates();
   const real=statRounds(), anyCond=realRounds().some(r=>(r.cond||[]).length), rs=real.length?chrono(real):[EXAMPLE_ROUND], ex=!real.length;
   const top=`<div class="top"><span class="brand">Stats</span>${sampleTag(ex)}</div>${statsTabs()}`;
-  const tough=anyCond?`<div class="card"><div class="setrow"><div>Leave out windy, wet or cold rounds<div class="small muted">So tough days don't drag your numbers down.</div></div><button class="switch ${S.toughOut?'on':''}" data-act="toggle" data-val="toughOut" aria-label="Leave out tough-condition rounds" aria-pressed="${S.toughOut}"></button></div></div>`:'';
+  const nOut=realRounds().length-real.length, tough=nOut?`<span class="small muted">${nOut} round${nOut>1?'s':''} left out of these numbers. Open a round to change it.</span>`:'';
   if(S.statsTab==='badges') return `${top}<div class="stack">${ex?`<div class="card muted">Badges and fun stats start once you've saved a round.</div>`:badgesHtml()}</div>`;
   const base=fixedBase();
   if(S.statsTab==='detail'){
@@ -837,7 +858,7 @@ const ordinal=n=>n+(n%100>=11&&n%100<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th
 
 // ----- mates -----
 function playerDoc(){
-  const rs=chrono(realRounds().filter(r=>!r.demo)).slice(-30);
+  const rs=chrono(realRounds().filter(r=>!r.demo&&!r.excluded)).slice(-30);
   const pick=t=>({ott:+t.ott.toFixed(2),app:+t.app.toFixed(2),atg:+t.atg.toFixed(2),putt:+t.putt.toFixed(2),total:+t.total.toFixed(2)});
   return {hcp:S.hcp, updated:Date.now(), rounds:rs.map(r=>{ const a=roundSG(r,'0').t, b=roundSG(r,String(myHcp(r))).t; return {id:r.id,date:r.date,course:String(r.course).slice(0,80),score:a.score,par:a.par,holes:a.holes,hcp:r.hcp??null,s0:pick(a),sm:pick(b)}; })};
 }
@@ -922,6 +943,7 @@ function vMyGolf(){
       <div class="setrow"><div>Distances<div class="small muted">Ranges are quicker. You can still type an exact number on any distance.</div></div>${seg('mode',S.mode,[['quick','Ranges'],['exact','Exact']])}</div>
       <div class="setrow"><div>Smart entry<div class="small muted">Assumes 2 putts once you pick a score and scrolls you to the next question.</div></div><button class="switch ${S.smart?'on':''}" data-act="toggle" data-val="smart" aria-label="Smart entry" aria-pressed="${S.smart}"></button></div>
       <div class="setrow"><div>Track tee club<div class="small muted">Adds a club pick to each tee shot and a by-club table in Stats.</div></div><button class="switch ${S.clubs?'on':''}" data-act="toggle" data-val="clubs" aria-label="Track tee club" aria-pressed="${S.clubs}"></button></div>
+      <div class="setrow"><div>Leave out windy, wet or cold rounds<div class="small muted">Rounds you tagged with tough weather when you started them won't count in your averages and trends.</div></div><button class="switch ${S.toughOut?'on':''}" data-act="toggle" data-val="toughOut" aria-label="Leave out tough-weather rounds" aria-pressed="${S.toughOut}"></button></div>
     </div>
     <div class="card stack">
       <h3>Account</h3>
@@ -1101,7 +1123,7 @@ function vSetup(){
       <input id="cname" class="field" data-setup="name" value="${esc(st.name)}" placeholder="e.g. Royal Adelaide, Blue course">
       <div class="row"><label class="small muted" for="rdate">Date</label><input id="rdate" type="date" class="field" style="max-width:170px" data-setup="date" value="${esc(st.date)}">
         <label class="small muted" for="rhcp">Handicap today</label><input id="rhcp" class="field num" style="max-width:90px" inputmode="decimal" data-setup="hcp" value="${esc(st.hcp)}" placeholder="8.3"></div>
-      <span class="small muted">Conditions (optional)</span><div class="chips wide">${CONDS.map(([k,l])=>`<button class="chip ${(st.cond||[]).includes(k)?'on':''}" data-act="scond" data-val="${k}">${l}</button>`).join('')}</div>
+      <span class="small muted">Weather (optional)</span><div class="chips wide">${CONDS.map(([k,l])=>`<button class="chip ${(st.cond||[]).includes(k)?'on':''}" data-act="scond" data-val="${k}">${l}</button>`).join('')}</div>
       <div class="seg"><button class="${st.holes.length===18?'on':''}" data-act="nholes" data-val="18">18 holes</button><button class="${st.holes.length===9?'on':''}" data-act="nholes" data-val="9">9 holes</button></div>
       <p class="small muted" style="margin:0">Pars and lengths are saved with the course, so you only enter them once. No lengths handy? Leave the typical ones and fix them later.</p>
       <div class="coursegrid">
@@ -1235,7 +1257,10 @@ function checkHtml(r,per){
   const nAss=r.holes.reduce((a,h)=>a+(h.assumed||[]).length,0);
   return `${bad.length?`<div class="card stack"><h3>Check ${bad.length===1?'this hole':'these holes'}</h3>${bad.map(x=>`<button class="roundrow" data-act="fixhole" data-i="${x.i}"><span><b>Hole ${x.h.n}</b><br><span class="small muted">${esc(x.s.err)}</span></span><span class="btn small">Fix</span></button>`).join('')}</div>`:''}
   ${nAss?`<span class="small muted">${nAss} detail${nAss>1?'s were':' was'} filled in for you. Tap Edit holes to check them.</span>`:''}
-  <div class="row"><span class="small muted">Conditions</span>${CONDS.map(([k,l])=>`<button class="chip ${(r.cond||[]).includes(k)?'on':''}" style="flex:0 0 auto;padding:6px 12px" data-act="rcond" data-val="${k}">${l}</button>`).join('')}</div>`;
+  <div class="card stack leaveout ${r.excluded?'on':''}">
+    <div class="setrow"><div><b>Leave this round out of my stats</b><div class="small muted">${r.excluded?'It stays in your history, but your averages, trends, goals and mates ignore it.':'Feeling crook or just a write-off? It stays in your history either way.'}</div></div><button class="switch ${r.excluded?'on':''}" data-act="rexclude" aria-label="Leave this round out of my stats" aria-pressed="${!!r.excluded}"></button></div>
+    ${r.excluded?`<span class="small muted">Why? (optional, just for you)</span><div class="chips wide">${LEAVE_WHY.map(([k,l])=>`<button class="chip ${r.excludeWhy===k?'on':''}" data-act="rwhy" data-val="${k}">${l}</button>`).join('')}</div>`:''}
+  </div>`;
 }
 function vResults(){
   const r=S.viewing||S.round, {t,per}=rsg(r,S.base), tour=roundSG(r,'tour').t;
@@ -1244,6 +1269,7 @@ function vResults(){
   <div class="top"><button class="btn ghost" data-act="home">← Rounds</button><span class="brand">Round</span><span></span></div>
   <div class="stack">
     <div><h1>${esc(r.course)}</h1><span class="muted">${fmtDate(r.date)} · shot ${t.score} (${t.score-t.par>=0?'+':''}${t.score-t.par}) over ${t.holes} holes ${r.example?'<span class="tag">Example</span>':''}</span></div>
+    ${heroRound(r)}
     ${!t.complete?`<div class="flagnote">${r.holes.length-t.holes} hole${r.holes.length-t.holes>1?'s are':' is'} incomplete and left out of the totals.</div>`:''}
     ${checkHtml(r,per)}
     <div class="card stack">
@@ -1386,6 +1412,7 @@ document.addEventListener('click',e=>{
     case 'askdemo': S.confirmDemo=true; break;
     case 'statswho': case 'statstab': S.statsTab=val; if(val==='mates'&&uid&&!S.mates) loadMates(); window.scrollTo(0,0); break;
     case 'scond': { const c=S.setup.cond||(S.setup.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); break; }
+    case 'rexclude': case 'rwhy': { const r=S.viewing||S.round; if(a==='rexclude'){ r.excluded=!r.excluded; if(!r.excluded) delete r.excludeWhy; } else r.excludeWhy=r.excludeWhy===val?undefined:val; if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
     case 'rcond': { const r=S.viewing||S.round; const c=r.cond||(r.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
     case 'fixhole': { if(S.viewing){ S.round=JSON.parse(JSON.stringify(S.viewing)); S.viewing=null; } S.idx=Number(b.dataset.i); S.openExact={}; S.editHole=false; saveDraft(); S.view='hole'; window.scrollTo(0,0); break; }
     case 'newround': newSetup(); S.view='setup'; window.scrollTo(0,0); break;
