@@ -712,6 +712,7 @@ function render(){
   let md=document.getElementById('modal'); if(!md){ md=document.createElement('div'); md.id='modal'; document.body.appendChild(md); }
   const dr=S.drillOpen&&drillById(S.drillOpen);
   if(dr){ if(md.dataset.id!==dr.id){ md.innerHTML=drillModalHtml(dr); md.dataset.id=dr.id; document.body.classList.add('noscroll'); startAnim(dr); const c=md.querySelector('.modal button'); if(c) c.focus(); } }
+  else if(S.askNotif&&!S.celebrate){ if(md.dataset.id!=='notif'){ md.innerHTML=askNotifHtml(); md.dataset.id='notif'; document.body.classList.add('noscroll'); } }
   else if(S.celebrate){ if(md.dataset.id!=='cele'){ md.innerHTML=celebrateHtml(S.celebrate); md.dataset.id='cele'; document.body.classList.add('noscroll'); } }
   else if(S.badgeOpen){ const A=achievements(), x=A.stats.find(y=>y.id===S.badgeOpen); if(x&&md.dataset.id!=='b-'+x.id){ md.innerHTML=badgeModalHtml(x,A.cur); md.dataset.id='b-'+x.id; document.body.classList.add('noscroll'); } }
   else if(md.dataset.id){ stopAnim(); md.innerHTML=''; md.dataset.id=''; document.body.classList.remove('noscroll'); }
@@ -1214,27 +1215,56 @@ async function savePushRow(sub){
   const map=sessionDates(B), ends=Object.keys(map).sort().pop()||null, tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'Australia/Adelaide';
   const cur=await sb.from('push_reminders').select('subs').eq('user_id',uid).maybeSingle();
   const subs=((cur.data&&cur.data.subs)||[]).filter(x=>!sub||x.endpoint!==sub.endpoint); if(sub) subs.push(sub.toJSON?sub.toJSON():sub);
-  const r=await sb.from('push_reminders').upsert({user_id:uid,subs,days:B.dayList||[],remind_at:(B.remindAt||'07:30')+':00',tz,plan:{focus:B.focus.map(moverTitle).join(' and '),mins:B.mins,sessions:map},ends_on:ends,enabled:!!B.remind,updated_at:new Date().toISOString()});
+  const r=await sb.from('push_reminders').upsert({user_id:uid,subs,days:B.dayList||[],remind_at:(B.remindAt||'07:30')+':00',tz,plan:{focus:B.focus.map(moverTitle).join(' and '),mins:B.mins,sessions:map},ends_on:ends,enabled:B.remind===true,updated_at:new Date().toISOString()});
   return r.error?'Couldn\'t save reminders. Try again.':null;
 }
-async function turnOnReminders(){
-  const B=S.block; S.remindMsg='';
-  if(!uid){ S.remindMsg='Sign in first so reminders can reach you.'; return render(); }
-  if(!pushSupported()){ S.remindMsg=isIOS()&&!isStandalone()?'On iPhone, add the app to your Home Screen first (Share → Add to Home Screen), then open it from there and turn reminders on.':'This browser can\'t show notifications. Try Chrome, or the app installed on your phone.'; return render(); }
-  const perm=await Notification.requestPermission();
-  if(perm!=='granted'){ S.remindMsg='Notifications are blocked for this app. Turn them on in your phone\'s settings, then try again.'; return render(); }
+// Where notifications stand on this device: on, ask (never asked), blocked, install (iPhone not on Home Screen), none.
+function notifState(){
+  if(!pushSupported()) return isIOS()&&!isStandalone()?'install':'none';
+  return Notification.permission==='granted'?'on':Notification.permission==='denied'?'blocked':'ask';
+}
+// Ask for notifications (must start from a tap), subscribe, and save the plan's reminder days if there is a plan.
+async function turnOnReminders(quiet){
+  const B=S.block, wasDenied=pushSupported()&&Notification.permission==='denied'; S.remindMsg='';
+  if(!uid||!pushSupported()) return render();
+  const perm=Notification.permission==='granted'?'granted':quiet?Notification.permission:await Notification.requestPermission();
+  if(perm!=='granted'){ if(!quiet&&wasDenied) S.remindMsg='Still blocked. Follow the steps above, then tap the button again.'; return render(); }
   try{
     const reg=await navigator.serviceWorker.ready;
     const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(VAPID_PUBLIC)});
-    B.remind=true; saveBlock(); const e=await savePushRow(sub); S.remindMsg=e||`Reminders on. You'll get a nudge on ${(B.dayList||[]).map(dayName).join(', ')}.`;
-  }catch(e){ S.remindMsg='Couldn\'t turn on notifications on this device.'; }
+    if(B&&B.remind!=='off'){ B.remind=true; saveBlock(); const e=await savePushRow(sub); if(!quiet) S.remindMsg=e||''; }
+  }catch(e){ if(!quiet) S.remindMsg='Couldn\'t turn on notifications on this device.'; }
   render();
+}
+function askNotifHtml(){
+  return `<div class="modalback" data-act="notifno"></div><div class="modal cele" role="dialog" aria-modal="true" aria-labelledby="ntitle">
+    <div class="celetop"><div class="bigmedal" style="font-size:3rem;line-height:1">🔔</div><h2 id="ntitle">Never miss a practice day</h2><span class="celesub">Turn on notifications for a gentle nudge on your practice days</span></div>
+    <div class="stack" style="gap:8px"><button class="btn big primary" data-act="notifyes">Allow notifications</button><button class="btn ghost" data-act="notifno">Not now</button></div></div>`;
 }
 const fmtTime=t=>{ const [h,m]=t.split(':').map(Number); return `${(h%12)||12}:${String(m).padStart(2,'0')} ${h<12?'am':'pm'}`; };
 function reminderCard(){
   const B=S.block; if(!B||!B.dayList) return '';
-  return `<div class="card stack remindcard"><div class="setrow"><div><b>🔔 Practice-day reminders</b><div class="small muted">A nudge on ${B.dayList.map(dayName).join(', ')} with that day's session: 2pm on weekdays, 9am on weekends.</div></div><button class="switch ${B.remind?'on':''}" data-act="remindtoggle" aria-label="Practice-day reminders" aria-pressed="${!!B.remind}"></button></div>
-    ${S.remindMsg?`<span class="small ${B.remind?'pos':'muted'}">${esc(S.remindMsg)}</span>`:''}</div>`;
+  const st=notifState();
+  const msg=S.remindMsg?`<span class="small muted">${esc(S.remindMsg)}</span>`:'';
+  if(st==='on'&&B.remind===true) return `<div class="card remindcard on"><div><b>🔔 Reminders on</b><div class="small muted">A gentle nudge on your practice days</div></div><button class="linkbtn small" data-act="remindoff">Stop</button>${msg}</div>`;
+  if(st==='on') return `<div class="card stack remindcard"><b>🔔 Reminders are off for this plan</b><div class="small muted">Get a gentle nudge on your practice days.</div><button class="btn primary" data-act="remindon">Turn reminders back on</button>${msg}</div>`;
+  if(st==='ask') return `<div class="card stack remindcard"><b>🔔 Don't miss your practice days</b><div class="small muted">Allow notifications for a gentle nudge on your practice days.</div><button class="btn primary" data-act="remindon">Allow notifications</button>${msg}</div>`;
+  if(st==='blocked') return `<div class="card stack remindcard"><b>🔔 Notifications are blocked</b><div class="small muted">To get a nudge on your practice days, turn them on:</div>
+    <ol class="small remindsteps">${isIOS()?'<li>Open your phone\'s <b>Settings</b> → <b>Notifications</b></li><li>Find <b>Strokes Gained</b> and turn on <b>Allow Notifications</b></li>':'<li>Tap the <b>⋮</b> menu or long-press the app icon → <b>App info</b></li><li>Tap <b>Notifications</b> and turn them on</li>'}<li>Come back here and tap the button below</li></ol>
+    <button class="btn ghost" data-act="remindon">I've turned them on</button>${msg}</div>`;
+  if(st==='install') return `<div class="card stack remindcard"><b>🔔 Get practice-day reminders</b><div class="small muted">On iPhone, add the app to your Home Screen first: Share → Add to Home Screen. Then open it from there.</div></div>`;
+  return '';
+}
+// Plan built without the place a focus area needs (e.g. putting with no putting green ticked): say what's missing, offer to add it.
+function missingNote(B){
+  const miss=(B.missing||[]).filter(k=>!(B.missDismissed||[]).includes(k)); if(!miss.length) return '';
+  const started=B.sessions.some(x=>x.done)||Object.keys(B.scores||{}).length; if(started) return '';
+  const need=[...new Set(miss.flatMap(k=>DRILL_LIB.filter(d=>(d.areas[k]||0)>=.5).flatMap(d=>d.places)))].filter(p=>!(B.places||[]).includes(p));
+  const add=['green','short','range','home'].find(p=>need.includes(p)); if(!add) return '';
+  const area={putt:'putting',atg:'chipping',app:'approach shots',ott:'driving'}[catOf(miss[0])]||'this';
+  const place=({green:'a putting green',short:'a chipping area',range:'the range',home:'practice at home'})[add];
+  return `<div class="flagnote stack" style="gap:10px"><b>Add ${area} to your plan?</b><span class="small">${esc(miss.map((k,i)=>i?moverTitle(k).toLowerCase():moverTitle(k)).join(' and '))} ${miss.length>1?'are':'is'} costing you shots, but your plan has nowhere to work on ${miss.length>1?'them':'it'}.</span>
+    <div class="row" style="gap:8px;flex-wrap:nowrap"><button class="btn primary" style="flex:1" data-act="blockaddplace" data-val="${add}">Add ${place}</button><button class="btn ghost" data-act="blockmissno">No thanks</button></div></div>`;
 }
 function blockHtml(){
   const B=S.block; if(!B) return `${secHead('4-week plan','Built from your rounds, with targets for your handicap')}${blockSetupHtml()}`;
@@ -1257,7 +1287,7 @@ function blockHtml(){
     <div class="weekbar">${[1,2,3,4].map(w=>{ const ss=B.sessions.filter(x=>x.w===w), dn=ss.filter(x=>x.done).length; return `<div class="${w<week?'past':w===week?'now':''}"><span>Week ${w}</span><i style="--p:${dn/ss.length}"></i></div>`; }).join('')}</div>
     ${fx}
     <span class="small" style="opacity:.8">${done} of ${total} sessions done</span></div>
-  ${(B.missing||[]).length?`<div class="flagnote">${B.missing.map(k=>esc(moverTitle(k))).join(' and ')} needs somewhere you didn't tick, so those sessions use what you have. Add a facility in a new plan to cover it fully.</div>`:''}
+  ${missingNote(B)}
   ${reminderCard()}
   ${wk.map(sessHtml).join('')}
   ${cats.length?`<div class="card stack"><h3>Your tests</h3>${cats.map(c=>{ const b=B.tests.base[c], r=B.tests.re[c], T=TESTS[c], lv=levelOf(S.hcp!=null?S.hcp:10); return `<div class="testrow"><span><b>${esc(T.t)}</b><span class="small muted">Typical for ${esc(lv.name)}: ${T.band[lv.n-1]}/${T.max}</span></span><span class="tbars"><i style="width:${b/T.max*100}%"></i>${r!=null?`<i class="re" style="width:${r/T.max*100}%"></i>`:''}</span><span class="small"><b>${b}</b>${r!=null?` → <b class="${r>b?'pos':r<b?'neg':''}">${r}</b>`:' → re-test in week 4'}</span></div>`; }).join('')}</div>`:''}
@@ -1868,11 +1898,16 @@ document.addEventListener('click',e=>{
     case 'blockfocus': { const sel=S.blockFocus||blockLeaks().slice(0,2).map(x=>x.k); S.blockFocus=sel.includes(val)?sel.filter(x=>x!==val):[...sel,val].slice(-2); break; }
     case 'blockday': { const o=blockOpts(); const d=o.days.includes(val)?o.days.filter(x=>x!==val):[...o.days,val]; S.blockOpt={...o,days:DAYS.map(x=>x[0]).filter(x=>d.includes(x))}; break; }
     case 'blockmins': S.blockOpt={...blockOpts(),mins:Number(val)}; break;
+    case 'blockmissno': S.block.missDismissed=[...(S.block.missing||[])]; saveBlock(); break;
+    case 'blockaddplace': { const B=S.block, rem=B.remind; S.block=buildBlock(B.focus,{days:B.dayList,mins:B.mins,places:[...B.places,val],sharp:B.sharp}); S.block.remind=rem; saveBlock(); S.blockOpt={...blockOpts(),places:S.block.places}; if(rem===true&&notifState()==='on') turnOnReminders(true); break; }
     case 'blockplace': { const o=blockOpts(); S.blockOpt={...o,places:o.places.includes(val)?o.places.filter(x=>x!==val):[...o.places,val]}; break; }
     case 'blocksharp': { const o=blockOpts(); S.blockOpt={...o,sharp:!o.sharp}; break; }
-    case 'blockstart': { const f=S.blockFocus||blockLeaks().slice(0,2).map(x=>x.k); if(f.length){ S.block=buildBlock(f,blockOpts()); saveBlock(); } break; }
+    case 'blockstart': { const f=S.blockFocus||blockLeaks().slice(0,2).map(x=>x.k); if(f.length){ S.block=buildBlock(f,blockOpts()); S.block.remind=true; saveBlock(); if(notifState()==='on'||notifState()==='ask'){ turnOnReminders(); return; } } break; }
     case 'blockreset': if(S.block&&S.block.remind&&sb&&uid) sb.from('push_reminders').update({enabled:false}).eq('user_id',uid).then(()=>{},()=>{}); S.block=null; saveBlock(); break;
-    case 'remindtoggle': if(S.block.remind){ S.block.remind=false; saveBlock(); S.remindMsg='Reminders off.'; savePushRow(null); } else { turnOnReminders(); return; } break;
+    case 'remindoff': S.block.remind='off'; saveBlock(); S.remindMsg=''; savePushRow(null); break;
+    case 'remindon': if(S.block) S.block.remind=true; turnOnReminders(); return;
+    case 'notifyes': S.askNotif=false; lsSet('sg.notifAsked',true); turnOnReminders(); return;
+    case 'notifno': S.askNotif=false; lsSet('sg.notifAsked',true); break;
     case 'remindat': S.block.remindAt=val; saveBlock(); if(S.block.remind){ S.remindMsg=`Reminders moved to ${fmtTime(val)}.`; savePushRow(null); } break;
     case 'blockdone': { const x=S.block.sessions[Number(val)]; x.done=true; saveBlock(); window.scrollTo(0,0); break; }
     case 'bscore': { const k=b.dataset.key, d=Number(b.dataset.d); const store=k.startsWith('t:')?(()=>{ const [,kind,cat]=k.split(':'); return [S.block.tests[kind],cat,TESTS[cat].max]; })():[S.block.scores,k,(()=>{ const id=k.split(':')[2]; return outOf(DRILL_LIB.find(x=>x.id===id)||{})||99; })()];
@@ -2118,7 +2153,10 @@ async function onSession(session){
   uid=session&&session.user?session.user.id:null;
   me.email=session&&session.user?session.user.email:'';
   me.name=session&&session.user&&session.user.user_metadata?(session.user.user_metadata.display_name||''):'';
-  if(uid){ if(S.view==='auth'){ S.view='home'; } render(); loadAll(); }
+  if(uid){ if(S.view==='auth'){ S.view='home'; }
+    if(notifState()==='ask'&&isStandalone()&&!lsGet('sg.notifAsked',false)) S.askNotif=true;
+    render(); loadAll();
+    if(notifState()==='on'&&S.block&&S.block.remind!=='off') turnOnReminders(true); }
   else if(CONFIGURED&&!lsGet('sg.offline',false)){ S.view='auth'; render(); }
 }
 if(CONFIGURED&&window.supabase){
