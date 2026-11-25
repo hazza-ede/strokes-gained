@@ -754,29 +754,32 @@ function drillModalHtml(d){
 }
 function stopAnim(){} function startAnim(){}
 function tee12Art(){
-  const C=160, R=[42,84,126], lab=isFt()?['3 ft','6 ft','9 ft']:['1 m','2 m','3 m'], col=['#FFD23F','#FF9F1C','#F25C3B'];
-  const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
-  const tee=(x,y,c)=>`<g><ellipse cx="${x+1.6}" cy="${y+2.2}" rx="6" ry="4.6" fill="rgba(0,0,0,.28)"/><circle cx="${x}" cy="${y}" r="5.6" fill="${c}" stroke="rgba(0,0,0,.25)" stroke-width="1"/><circle cx="${x-1.6}" cy="${y-1.8}" r="1.8" fill="rgba(255,255,255,.7)"/></g>`;
-  const rings=R.map((r,i)=>`<circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.2" stroke-dasharray="1.5 5" stroke-linecap="round"/>`).join('');
-  const tees=R.map((r,i)=>dirs.map(([dx,dy])=>tee(C+dx*r,C+dy*r,col[i])).join('')).join('');
-  const pills=R.map((r,i)=>{ const x=C+r*0.707, y=C+r*0.707; return `<g transform="translate(${x} ${y})"><rect x="-21" y="-10.5" width="42" height="21" rx="10.5" fill="#fff"/><circle cx="-11" cy="0" r="3.8" fill="${col[i]}"/><text x="5" y="4" text-anchor="middle" font-size="10.5" font-weight="700" font-family="Inter,system-ui,sans-serif" fill="#111814">${lab[i]}</text></g>`; }).join('');
-  const bx=C+R[1], by=C;
-  return `<svg viewBox="0 0 320 320" role="img" aria-label="Twelve tees around a hole: four each at ${lab.join(', ')}, on four sides">
+  // A calm three-quarter view of the green: soft sage surface, fine distance rings, standing tees and a flagstick.
+  const cx=170, cy=132, R=[44,88,132], k=0.5, lab=isFt()?['3 ft','6 ft','9 ft']:['1 m','2 m','3 m'];
+  const ang=[Math.PI/4,3*Math.PI/4,5*Math.PI/4,7*Math.PI/4], pt=(r,d)=>[cx+r*Math.cos(ang[d]),cy+r*Math.sin(ang[d])*k];
+  const peg=([x,y])=>`<g><ellipse cx="${x+3}" cy="${y+1}" rx="4.5" ry="1.6" fill="rgba(20,50,35,.18)"/><path d="M${x-1.3} ${y} L${x-1.6} ${y-9} L${x+1.6} ${y-9} L${x+1.3} ${y} Z" fill="#FBFAF6" stroke="#9AA79F" stroke-width=".6"/><ellipse cx="${x}" cy="${y-9.2}" rx="3.6" ry="1.5" fill="#FFFFFF" stroke="#9AA79F" stroke-width=".6"/></g>`;
+  const all=[]; R.forEach(r=>[0,1,2,3].forEach(d=>all.push(pt(r,d)))); all.sort((p,q)=>p[1]-q[1]);
+  const back=all.filter(p=>p[1]<=cy), front=all.filter(p=>p[1]>cy);
+  const [bx,by]=pt(R[1],0);
+  return `<svg viewBox="0 0 340 236" role="img" aria-label="Twelve tees around a hole: four each at ${lab.join(', ')}, on four sides">
     <defs>
-      <radialGradient id="gg" cx="45%" cy="40%" r="70%"><stop offset="0" stop-color="#5DBB7E"/><stop offset="1" stop-color="#2C7A4B"/></radialGradient>
-      <pattern id="mow" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><rect width="14" height="28" fill="rgba(255,255,255,.07)"/></pattern>
-      <clipPath id="gc"><circle cx="${C}" cy="${C}" r="146"/></clipPath>
+      <radialGradient id="g12" cx="50%" cy="42%" r="62%"><stop offset="0" stop-color="#DCEBDF"/><stop offset=".7" stop-color="#C6DDCB"/><stop offset="1" stop-color="#B3D0BA"/></radialGradient>
+      <radialGradient id="b12" cx="38%" cy="35%" r="70%"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DDE3DF"/></radialGradient>
     </defs>
-    <circle cx="${C}" cy="${C}" r="156" fill="#3F8E5E"/>
-    <circle cx="${C}" cy="${C}" r="146" fill="url(#gg)"/>
-    <rect width="320" height="320" fill="url(#mow)" clip-path="url(#gc)"/>
-    ${rings}
-    <path d="M${bx-21} ${by+1} C ${C+50} ${C+26}, ${C+18} ${C+18}, ${C+5} ${C+3}" fill="none" stroke="#fff" stroke-width="1.6" stroke-dasharray="2 4" stroke-linecap="round" opacity=".9"/>
-    <ellipse cx="${C+1.5}" cy="${C+2}" rx="9" ry="8" fill="rgba(0,0,0,.25)"/>
-    <circle cx="${C}" cy="${C}" r="8" fill="#0E1A13" stroke="#E9F2EC" stroke-width="1.6"/>
-    ${tees}
-    <ellipse cx="${bx-13}" cy="${by+3}" rx="6.5" ry="5" fill="rgba(0,0,0,.3)"/><circle cx="${bx-14.5}" cy="${by}" r="6.2" fill="#fff"/><circle cx="${bx-16.5}" cy="${by-2}" r="2" fill="rgba(0,0,0,.08)"/>
-    ${pills}
+    <ellipse cx="${cx}" cy="${cy+4}" rx="164" ry="86" fill="#EEF3EF"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="160" ry="82" fill="url(#g12)"/>
+    ${R.map(r=>`<ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${r*k}" fill="none" stroke="#7FA38A" stroke-width=".8" stroke-opacity=".55"/>`).join('')}
+    ${back.map(peg).join('')}
+    <ellipse cx="${cx}" cy="${cy}" rx="7.5" ry="3.8" fill="#24352B"/>
+    <ellipse cx="${cx}" cy="${cy+.6}" rx="6" ry="2.6" fill="#101A14"/>
+    <line x1="${cx+1}" y1="${cy}" x2="${cx-36}" y2="${cy+9}" stroke="rgba(20,50,35,.16)" stroke-width="2" stroke-linecap="round"/>
+    <path d="M${bx-7} ${by-3} C ${bx-30} ${by-2}, ${cx+30} ${cy+20}, ${cx+7} ${cy+3}" fill="none" stroke="#0E3B2C" stroke-width="1.1" stroke-dasharray="1 4" stroke-linecap="round" opacity=".7"/>
+    <line x1="${cx}" y1="${cy-1}" x2="${cx}" y2="${cy-84}" stroke="#F7F7F4" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="${cx+.8}" y1="${cy-1}" x2="${cx+.8}" y2="${cy-84}" stroke="#C9CFCB" stroke-width=".7"/>
+    <path d="M${cx+1} ${cy-84} L${cx+30} ${cy-77} L${cx+1} ${cy-69} Z" fill="#0E3B2C"/>
+    ${front.map(peg).join('')}
+    <ellipse cx="${bx-4}" cy="${by+1.5}" rx="6" ry="2" fill="rgba(20,50,35,.2)"/><circle cx="${bx-7}" cy="${by-3.6}" r="4.6" fill="url(#b12)" stroke="#C3CBC6" stroke-width=".5"/>
+    ${R.map((r,i)=>`<text text-anchor="middle" x="${cx+r-6}" y="${cy+4}" font-size="10" font-weight="600" letter-spacing=".02em" font-family="Inter,system-ui,sans-serif" fill="#3E5A48">${lab[i]}</text>`).join('')}
   </svg>`;
 }
 function libraryHtml(){
