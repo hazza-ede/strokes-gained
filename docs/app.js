@@ -61,7 +61,7 @@ const fmtDate=d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('en-AU
 const shortDate=d=>{ try{ return new Date(d+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'});}catch(e){return d;} };
 const today=()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const hole=()=>S.round.holes[S.idx];
-function saveDraft(){ lsSet('sg.draft',S.round); }
+function saveDraft(){ lsSet('sg.draft',S.round); lsSet('sg.draftAt',Date.now()); }
 const realRounds=()=>S.rounds.filter(r=>!r.example);
 function allRounds(){ const list=[...realRounds()]; list.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.id||'').localeCompare(a.id||'')); return list.length?list:[EXAMPLE_ROUND]; }
 const chrono=rs=>[...rs].sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.id||'').localeCompare(b.id||''));
@@ -673,7 +673,9 @@ async function saveCourse(name,holes,id){
   const i=S.courses.findIndex(c=>c.id===course.id||c.name.toLowerCase()===name.toLowerCase());
   if(i>=0){ course.id=S.courses[i].id; S.courses[i]=course; } else S.courses.push(course);
   lsSet('sg.courses',S.courses);
-  if(sb&&uid){ try{ await sb.from('courses').upsert({id:course.id,name:course.name,holes:course.holes,created_by:uid}); }catch(e){} }
+  let ok=false;
+  if(sb&&uid){ try{ const r=await sb.from('courses').upsert({id:course.id,name:course.name,holes:course.holes,created_by:uid}); ok=!r.error; }catch(e){} }
+  if(!ok){ course.pending=true; lsSet('sg.courses',S.courses); }
 }
 let courseTimer=null;
 function saveRoundCourse(){ clearTimeout(courseTimer); const r=S.round; if(!r) return; const name=r.course, holes=r.holes.map(h=>({par:h.par,len:h.len})); courseTimer=setTimeout(()=>saveCourse(name,holes,null),800); }
@@ -860,7 +862,7 @@ async function loadAll(){
   if(!sb||!uid) return;
   const [rs,dr,cs,pr]=await Promise.all([
     sb.from('rounds').select('data').eq('user_id',uid),
-    sb.from('drafts').select('data').eq('user_id',uid).maybeSingle(),
+    sb.from('drafts').select('data,updated_at').eq('user_id',uid).maybeSingle(),
     sb.from('courses').select('id,name,holes'),
     sb.from('profiles').select('display_name').eq('id',uid).maybeSingle()
   ]);
@@ -872,8 +874,13 @@ async function loadAll(){
     S.rounds=[...remote,...localOnly]; lsSet('sg.rounds',S.rounds);
     for(const r of localOnly){ await sb.from('rounds').upsert({id:r.id,user_id:uid,date:r.date,data:r,updated_at:new Date().toISOString()}); }
   }
-  if(!S.round&&dr.data&&dr.data.data&&dr.data.data.round){ S.round=dr.data.data.round; S.idx=dr.data.data.idx||0; saveDraft(); }
-  if(!cs.error){ const remoteC=(cs.data||[]).filter(c=>c&&c.id&&c.name&&Array.isArray(c.holes)); const cids=new Set(remoteC.map(c=>c.id)); S.courses=[...remoteC,...S.courses.filter(c=>!cids.has(c.id))]; lsSet('sg.courses',S.courses); }
+  // In-progress round: whichever copy (this phone or the server) was changed most recently wins.
+  const srv=dr.data&&dr.data.data&&dr.data.data.round?dr.data.data:null;
+  const srvAt=srv?Date.parse(dr.data.updated_at)||0:0, locAt=lsGet('sg.draftAt',0);
+  const localDraft=S.round&&!S.round.saved;
+  if(srv&&(!localDraft||srvAt>locAt)){ S.round=srv.round; S.idx=srv.idx||0; lsSet('sg.draft',S.round); lsSet('sg.draftAt',srvAt); }
+  else if(localDraft&&locAt>srvAt){ syncDraftToDb(); }
+  if(!cs.error){ const remoteC=(cs.data||[]).filter(c=>c&&c.id&&c.name&&Array.isArray(c.holes)); const cids=new Set(remoteC.map(c=>c.id)); const pend=S.courses.filter(c=>!cids.has(c.id)&&c.pending); for(const c of pend){ const r=await sb.from('courses').upsert({id:c.id,name:c.name,holes:c.holes,created_by:uid}); if(!r.error) delete c.pending; } S.courses=[...remoteC,...pend]; lsSet('sg.courses',S.courses); }
   await loadMates();
   render();
 }
