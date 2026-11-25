@@ -1140,10 +1140,12 @@ function tee12Art(){
   </svg>`;
 }
 function libraryHtml(){
-  const groups=[['putt','Putting'],['atg','Chipping and bunkers'],['app','Approach'],['ott','Driving']];
-  return `<details class="card library" ${S.libOpen?'open':''}><summary><b>Browse all ${DRILL_LIB.length} drills</b><span class="small muted">Tap any drill to see how it works</span></summary>
-    ${groups.map(([c,l])=>{ const ds=DRILL_LIB.filter(d=>Object.keys(d.areas).some(k=>CAT_OF(k)===c&&d.areas[k]>=0.5)); return `<h3 style="margin-top:12px">${l}</h3><div class="liblist">${ds.map(d=>`<button class="libitem" data-act="drill" data-val="${d.id}"><span><b>${esc(d.t)}</b><br><span class="small muted">${esc(d.type)} · ${d.min}–${d.max} min</span></span><span class="muted">›</span></button>`).join('')}</div>`; }).join('')}
-  </details>`;
+  const groups=[['putt','Putting'],['atg','Short game'],['app','Approach'],['ott','Tee shots']], c=S.libCat||'putt';
+  const ds=DRILL_LIB.filter(d=>Object.keys(d.areas).some(k=>CAT_OF(k)===c&&d.areas[k]>=0.5));
+  return `${secHead('Drill library','Tap any drill to see how it works')}
+  <div class="seg libseg" role="tablist" aria-label="Drill type">${groups.map(([k,l])=>`<button role="tab" aria-selected="${c===k}" class="${c===k?'on':''}" data-act="libcat" data-val="${k}">${l}</button>`).join('')}</div>
+  <div class="card"><div class="liblist">${ds.map(d=>`<button class="libitem" data-act="drill" data-val="${d.id}"><span><b>${esc(d.t)}</b><br><span class="small muted">${esc(d.type)} · ${d.min}–${d.max} min</span></span><span class="muted">›</span></button>`).join('')}</div>
+  <span class="small muted">${ds.length} ${groups.find(g=>g[0]===c)[1].toLowerCase()} drill${ds.length===1?'':'s'}</span></div>`;
 }
 // ================= 4-week program =================
 const TESTS={
@@ -1160,6 +1162,26 @@ function drillTarget(d,week){ const N=outOf(d); if(!N) return null; const lv=lev
 function blockLeaks(){ const nm=needleMovers(statRounds()); return nm.list.filter(x=>DRILL_LIB.some(d=>d.areas[x.k]>=.5)).slice(0,4); }
 const DAYS=[['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
 const dayName=k=>(DAYS.find(d=>d[0]===k)||[,k])[1];
+// Strokes gained per round in each part of the game over the last 10 rounds, against the golfer's goal.
+function catSG(){ const rs=chrono(statRounds()).slice(-10), t={ott:0,app:0,atg:0,putt:0}; let holes=0;
+  rs.forEach(r=>{ const b=resolveBase('goal',r); r.holes.forEach(h=>{ const s=holeSG(h,b); if(!s.ok) return; holes++; for(const c in t) t[c]+=s[c]||0; }); });
+  for(const c in t) t[c]=holes?t[c]*18/holes:0; return t; }
+const CAT_WORD={ott:'driving',app:'approach play',atg:'short game',putt:'putting'};
+const CAT_PLACE={ott:'the range',app:'the range',atg:'a chipping area',putt:'a putting green'};
+// The golfer's strengths outside what the plan focuses on, best first; up to two that can be practised where they've ticked.
+function strengths(focus,places){
+  const fc=new Set(focus.map(catOf)), sg=catSG();
+  const all=['ott','app','atg','putt'].filter(c=>!fc.has(c)).sort((a,b)=>sg[b]-sg[a]);
+  const can=c=>DRILL_LIB.some(d=>d.places.some(p=>places.includes(p))&&Object.keys(d.areas).some(k=>catOf(k)===c&&d.areas[k]>=.6));
+  const ok=all.filter(can), use=ok.slice(0,1); if(ok[1]&&(sg[ok[1]]>0||sg[ok[1]]>=sg[ok[0]]-.5)) use.push(ok[1]);
+  return {use,missed:all.slice(0,2).filter(c=>!can(c)),sg};
+}
+const sharpMinsOf=m=>m>=60?20:m>=45?15:10;
+function sharpText(o,sel){
+  const st=strengths(sel,o.places), names=st.use.map(c=>CAT_WORD[c]);
+  if(!names.length) return `Nowhere you've ticked covers your strengths${st.missed.length?` (${st.missed.map(c=>CAT_WORD[c]).join(' and ')}). Add ${CAT_PLACE[st.missed[0]]} to include them`:''}.`;
+  return `Adds ${sharpMinsOf(o.mins)} minutes on your strengths, ${names.join(' and ')}, to ${o.mins>=45?'every session':'every second session'}, so they don't slip while you fix the leak.`;
+}
 function blockOpts(){ const o=S.blockOpt||{}; return {days:o.days||['wed','sat'],mins:o.mins||45,places:o.places||(S.plan.places&&S.plan.places.length?S.plan.places:['range','green','short']),sharp:o.sharp!==false}; }
 function buildBlock(focus,opt){
   const rand=rng(Date.now()%9973), {days,mins,places,sharp}=opt, sessions=[];
@@ -1168,15 +1190,18 @@ function buildBlock(focus,opt){
   const cats=[...new Set(focus.map(catOf))];
   // keep-sharp pool: long game first (needs the range), then any other part of the game not in focus
   const otherCats=['ott','app','atg','putt'].filter(c=>!cats.includes(c));
-  const sharpPool=otherCats.flatMap(c=>DRILL_LIB.filter(d=>fits(d)&&Object.keys(d.areas).some(k=>catOf(k)===c&&d.areas[k]>=.6)).map(d=>({d,c})));
-  const longFirst=sharpPool.filter(x=>x.c==='ott'||x.c==='app'), rest=sharpPool.filter(x=>!(x.c==='ott'||x.c==='app'));
+  // Strengths first: alternate between the golfer's best one or two parts of the game outside the focus.
+  const strong=strengths(focus,places).use;
+  const sharpPool=strong.map(c=>DRILL_LIB.filter(d=>fits(d)&&Object.keys(d.areas).some(k=>catOf(k)===c&&d.areas[k]>=.6)).map(d=>({d,c})));
+  const longFirst=[], rest=[]; const longest=Math.max(0,...sharpPool.map(a=>a.length));
+  for(let i=0;i<longest;i++) sharpPool.forEach(a=>{ if(a[i]) longFirst.push(a[i]); });
   let si=0;
   for(let w=1;w<=4;w++) days.forEach((day,n)=>{
     const idx=(w-1)*days.length+n, k=focus[idx%focus.length], types=WEEK_TYPES[w-1], items=[];
     const test=(w===1&&n===0)?{kind:'base',cats}:(w===4&&n===days.length-1)?{kind:'re',cats}:null;
     let left=mins-(test?10*cats.length:0);
     const wantSharp=sharp&&(longFirst.length||rest.length)&&(mins>=45||idx%2===1)&&left>=25;
-    const sharpMins=wantSharp?(mins>=60?20:mins>=45?15:10):0;
+    const sharpMins=wantSharp?sharpMinsOf(mins):0;
     left-=sharpMins;
     const cands=[...pool(k),...focus.filter(x=>x!==k).flatMap(pool)].filter((d,i,a)=>a.indexOf(d)===i);
     const ranked=cands.map(d=>({d,sc:(types.includes(d.type)?2:0)+(d.areas[k]||0)+rand()})).sort((a,b)=>b.sc-a.sc);
@@ -1216,10 +1241,10 @@ function vPlanWiz(){
     body=`<p class="muted">Tick everywhere you can get to.</p>
     <div class="chips wide">${PLACES.map(([k,l])=>`<button class="chip ${o.places.includes(k)?'on':''}" data-act="blockplace" data-val="${k}">${l}</button>`).join('')}</div>
     ${wizMissing(sel,o)}
-    <div class="card setrow" style="margin-top:14px"><div><b>Keep the rest of my game sharp</b><div class="small muted">${noRange?'Adds a short block for the parts of your game you\'re not focusing on. Tick the range to include driving and irons.':`Adds ${o.mins>=60?20:o.mins>=45?15:10} minutes of long game to ${o.mins>=45?'every session':'every second session'}, so your strengths don't slip.`}</div></div><button class="switch ${o.sharp?'on':''}" data-act="blocksharp" aria-label="Keep the rest of my game sharp" aria-pressed="${o.sharp}"></button></div>`; }
+    <div class="card setrow" style="margin-top:14px"><div><b>Keep my strengths sharp</b><div class="small muted">${sharpText(o,sel)}</div></div><button class="switch ${o.sharp?'on':''}" data-act="blocksharp" aria-label="Keep my strengths sharp" aria-pressed="${o.sharp}"></button></div>`; }
   if(st===3){ const pl=o.places.map(k=>(PLACES.find(x=>x[0]===k)||[,k])[1]).join(', ');
     const row=(l,v,step)=>`<div class="sumrow"><span class="small muted">${l}</span><b>${v}</b><button class="linkbtn small" data-act="wizgo" data-val="${step}">Change</button></div>`;
-    body=`<div class="card stack" style="gap:0">${row('Working on',sel.map(k=>esc(moverTitle(k))).join(' and '),0)}${row('Days',o.days.map(dayName).join(', '),1)}${row('Each session',o.mins+' min',1)}${row('Where',esc(pl),2)}${row('Keep the rest sharp',o.sharp?'Yes':'No',2)}</div>
+    body=`<div class="card stack" style="gap:0">${row('Working on',sel.map(k=>esc(moverTitle(k))).join(' and '),0)}${row('Days',o.days.map(dayName).join(', '),1)}${row('Each session',o.mins+' min',1)}${row('Where',esc(pl),2)}${row('Keep strengths sharp',o.sharp?(strengths(sel,o.places).use.map(c=>CAT_WORD[c]).join(' and ').replace(/^./,m=>m.toUpperCase())||'Yes'):'No',2)}</div>
     ${wizMissing(sel,o)}
     <p class="small muted">${o.days.length*4} sessions. Week 1 starts with a short test, and week 4 ends with the same test so you can see what changed.</p>`; }
   return `<div class="wiz">
@@ -1341,7 +1366,7 @@ function blockHtml(){
   const sessHtml=({x,i})=>{ const open=i===cur;
     return `<div class="card sesscard ${x.done?'done':''} ${open?'open':''}"><div class="row between" style="flex-wrap:nowrap"><div><span class="small muted">Week ${x.w} · ${x.day?dayName(x.day):'Session '+x.n}</span><div class="sesstitle">${esc(moverTitle(x.k))}</div></div>${x.done?'<span class="pill ok">✓ Done</span>':`<span class="pill">${B.mins} min</span>`}</div>
       ${open?`${x.test&&x.test.kind==='base'?x.test.cats.map(c=>testCard(B,i,c,'base')).join(''):''}
-      ${x.items.map(it=>{ const d=lib(it.id), key=`d:${i}:${it.id}`, v=B.scores[key], hit=it.target!=null&&v!=null&&v>=it.target; return `<div class="sessdrill ${hit?'hit':''} ${it.sharp?'sharp':''}">${it.sharp?`<span class="sharptag">Keep sharp · ${esc((CATS.find(c=>c[0]===it.sharp)||[,''])[1])}</span>`:''}<button class="linkish" data-act="drill" data-val="${it.id}"><b>${esc(d.t)}</b> <span class="small muted">${it.mins} min · ${esc(d.type||'')}</span></button>
+      ${x.items.map(it=>{ const d=lib(it.id), key=`d:${i}:${it.id}`, v=B.scores[key], hit=it.target!=null&&v!=null&&v>=it.target; return `<div class="sessdrill ${hit?'hit':''} ${it.sharp?'sharp':''}">${it.sharp?`<span class="sharptag">Strength · ${esc((CATS.find(c=>c[0]===it.sharp)||[,''])[1])}</span>`:''}<button class="linkish" data-act="drill" data-val="${it.id}"><b>${esc(d.t)}</b> <span class="small muted">${it.mins} min · ${esc(d.type||'')}</span></button>
         <div class="scorerow">${it.target!=null?`<span class="small">Target <b>${it.target}${it.max?'/'+it.max:''}</b></span>`:`<span class="small muted">${esc(d.score||'Beat your last go')}</span>`}${scoreStep(key,v,it.max)}${hit?'<span class="small pos">✓ Hit it</span>':''}</div></div>`; }).join('')}
       ${x.test&&x.test.kind==='re'?x.test.cats.map(c=>testCard(B,i,c,'re')).join(''):''}
       <button class="btn primary" data-act="blockdone" data-val="${i}">Session done</button>`:''}
@@ -1969,6 +1994,7 @@ document.addEventListener('click',e=>{
     case 'wizopen': S.view='planwiz'; S.wiz=0; S.blockFocus=null; window.scrollTo(0,0); break;
     case 'wizclose': S.view='improve'; S.impTab='plan'; window.scrollTo(0,0); break;
     case 'wizgo': S.wiz=Number(val); window.scrollTo(0,0); break;
+    case 'libcat': S.libCat=val; break;
     case 'imptab': S.view='improve'; S.impTab=val; window.scrollTo(0,0); break;
     case 'blockreset': if(S.block&&S.block.remind&&sb&&uid) sb.from('push_reminders').update({enabled:false}).eq('user_id',uid).then(()=>{},()=>{}); S.block=null; saveBlock(); break;
     case 'remindoff': S.block.remind='off'; saveBlock(); S.remindMsg=''; savePushRow(null); break;
