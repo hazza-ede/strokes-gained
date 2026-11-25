@@ -338,3 +338,9 @@ button,a,input,select,textarea,label,[data-act]{touch-action:manipulation}
 .fixchips{gap:6px}
 .fixchips .chip{min-width:56px;padding:10px 12px}
 .savepill{display:inline-block;justify-self:start;margin-top:6px;padding:4px 12px;border-radius:999px;background:var(--accent);color:#fff;font-weight:700;font-size:.82rem}
+/* picked up */
+.pickbtn{justify-self:start;border:1px dashed var(--line);background:transparent;border-radius:999px;padding:8px 14px;font:inherit;font-weight:600;color:#5E6B64;cursor:pointer}
+.pickbtn.on{border-style:solid;border-color:#9A6B12;background:#FFF8E4;color:#7A5410}
+.pickcard{font-weight:700;color:#7A5410;background:#FFF8E4;border-radius:999px;padding:3px 10px}
+.sec.pickedup{border-color:#E8D3A0}
+b.pk{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#7A5410;color:#fff;font-size:.68rem}
