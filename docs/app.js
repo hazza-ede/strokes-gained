@@ -43,7 +43,7 @@ function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){}
 const S={
   view:'home', tab:'home',
   mode:lsGet('sg.mode','quick'), putUnit:lsGet('sg.putunit','m'), fullUnit:lsGet('sg.fullunit','m'),
-  smart:lsGet('sg.smart',true), clubs:lsGet('sg.clubs',false), assumeOn:lsGet('sg.assumeOn',true),
+  smart:lsGet('sg.smart',true), clubs:lsGet('sg.clubs',false), assumeOn:false,
   bag:lsGet('sg.bag',{}), goals:lsGet('sg.goals',{sets:[],focus:[]}), plan:lsGet('sg.plan',{mins:45,places:['range','green']}), toughOut:lsGet('sg.toughOut',false), statsWho:'me', statsTab:'overview', planSeed:lsGet('sg.planSeed',1),
   hcp:lsGet('sg.hcp',null), goal:lsGet('sg.goal',null),
   base:(b=>['me','goal','0','tour'].includes(b)?b:'me')(lsGet('sg.base','me')),
@@ -103,6 +103,7 @@ function moverInfo(k){
     'app-100':[`Approaches inside 100 ${u}`,'Build a wedge chart: three swing lengths with each wedge, ten balls each, and write down the carries.'],
     'app-150':[`Approaches from 100–150 ${u}`,`On the range, call a target at 110, 130 or 150 ${u} before each ball and score how many finish within 10 ${u}.`],
     'app-200':[`Approaches from 150–200 ${u}`,'Aim at the middle of the green, not the flag, and take enough club to get there.'],
+    'app-recovery':['Recovery shots','From the trees or after a big miss, take the safe way back to the fairway. One shot to escape beats two at a hero gap.'],
     'app-200p':[`Long approaches over 200 ${u}`,'Lay up to your favourite wedge distance instead of forcing a long club.'],
     'atg-sand':['Bunker shots','Line drill: draw a line in the sand and practise hitting the sand on or just behind it, 20 in a row.'],
     'atg-rough':['Chips from the rough','Pick a landing spot and use more loft; the ball will come out with less spin and run.'],
@@ -113,13 +114,20 @@ function moverInfo(k){
     'ott-fw':['Driving distance','You find fairways but lose ground on length. Regular speed training adds distance over time.']
   }[k];
 }
+// recovery: tee shot into trees, or more shots than a normal approach needs with no chip to explain them
+function isRecovery(h){
+  const par=Number(h.par); if(h.score==null||h.score==='') return false;
+  if(par>=4&&h.teeLie==='recovery') return true;
+  const P=shotParts(h); const normal=par===5?2:1;
+  return !h.atg&&P.nApp>normal+1;
+}
 function needleMovers(rounds){
   const acc={}; let holes=0, total=0;
   const add=(k,v)=>{ acc[k]=acc[k]||{v:0,n:0}; acc[k].v+=v; acc[k].n++; };
   rounds.forEach(r=>{ const b=resolveBase('goal',r);
     r.holes.forEach(h=>{ const s=holeSG(h,b); if(!s.ok) return; holes++; total+=s.total; const par=Number(h.par);
       if(par>=4) add(h.teePen&&h.teePen!=='none'?'ott-pen':(h.teeLie==='sand'||h.teeLie==='recovery')?'ott-trouble':h.teeLie==='rough'?'ott-rough':'ott-fw', s.ott);
-      if(s.nApp>0||Number(h.penOther)>0) add(appBucket(par===3?Number(h.len):(h.teeLie==='green'?0:Number(h.teeDist))), s.app);
+      if(s.nApp>0||Number(h.penOther)>0) add(isRecovery(h)?'app-recovery':appBucket(par===3?Number(h.len):(h.teeLie==='green'?0:Number(h.teeDist))), s.app);
       if(h.atg) add(h.atgLie==='sand'?'atg-sand':h.atgLie==='rough'?'atg-rough':'atg-fw', s.atg);
       if(Number(h.putts)>0) add('putt-'+puttBucket(Number(h.fp)), s.putt);
     });
@@ -130,16 +138,17 @@ function needleMovers(rounds){
   return {gap:total*k,list,rounds:rounds.length,holes,all};
 }
 function famStats(rounds){
-  let fwO=0,fw=0,gO=0,g=0,scO=0,sc=0,udO=0,ud=0,putts=0,three=0,pens=0,holes=0,score=0,par=0;
+  let fwO=0,fw=0,gO=0,g=0,scO=0,sc=0,udO=0,ud=0,sdO=0,sd=0,rec=0,putts=0,three=0,pens=0,holes=0,score=0,par=0;
   rounds.forEach(r=>r.holes.forEach(h=>{ if(h.score==null) return; const p=Number(h.par),s=Number(h.score),pu=Number(h.putts||0);
     holes++; score+=s; par+=p; putts+=pu;
     if(p>=4&&h.teeLie){ fwO++; if((h.teeLie==='fairway'||h.teeLie==='green')&&(h.teePen||'none')==='none') fw++; }
     const gir = pu>0 ? (s-pu)<=p-2 : s<=p-2; gO++; if(gir) g++; else { scO++; if(s<=p) sc++; }
-    if(h.atg){ udO++; if(Number(h.atgShots||1)===1&&pu<=1) ud++; }
+    if(h.atg){ udO++; if(Number(h.atgShots||1)===1&&pu<=1) ud++; if(h.atgLie==='sand'){ sdO++; if(Number(h.atgShots||1)===1&&pu<=1) sd++; } }
+    if(isRecovery(h)) rec++;
     if(pu>=3) three++; pens+=(h.teePen&&h.teePen!=='none'?1:0)+Number(h.penOther||0);
   }));
   const k=holes?18/holes:0, pct=(a,b)=>b?Math.round(a/b*100):null;
-  return {holes,toPar:(score-par)*k,putts:putts*k,three:three*k,pens:pens*k,fw:pct(fw,fwO),fwN:[fw,fwO],gir:pct(g,gO),girN:[g,gO],scr:pct(sc,scO),ud:pct(ud,udO),udN:[ud,udO]};
+  return {holes,toPar:(score-par)*k,putts:putts*k,three:three*k,pens:pens*k,fw:pct(fw,fwO),fwN:[fw,fwO],gir:pct(g,gO),girN:[g,gO],scr:pct(sc,scO),ud:pct(ud,udO),udN:[ud,udO],sand:pct(sd,sdO),sandN:[sd,sdO],rec:rec*k,recN:rec};
 }
 function tilesHtml(st,oneRound){
   const pc=v=>v==null?'–':v+'%';
@@ -149,6 +158,8 @@ function tilesHtml(st,oneRound){
     ['Greens in reg.',pc(st.gir),oneRound?`${st.girN[0]} of ${st.girN[1]}`:'on in par minus 2'],
     ['Scrambling',pc(st.scr),'par or better after missing'],
     ['Up and down',pc(st.ud),oneRound?`${st.udN[0]} of ${st.udN[1]}`:'chip or splash, then 1 putt'],
+    ['Sand saves',pc(st.sand),oneRound?`${st.sandN[0]} of ${st.sandN[1]}`:'out of the bunker, then 1 putt'],
+    ['Trouble holes',oneRound?String(st.recN):n(st.rec),oneRound?'recovery shots, kept apart from approach ranges':'per 18, kept apart from approach ranges'],
     ['Putts',n(st.putts),oneRound?'this round':'per 18 holes'],
     ['3-putts',n(st.three),oneRound?'this round':'per 18 holes'],
     ['Penalties',n(st.pens),oneRound?'this round':'per 18 holes']
@@ -1020,22 +1031,8 @@ function vMyGolf(){
     </div>
     <div class="card stack">
       <h3>My bag</h3>
-      <span class="small muted">How far each club goes for you, carry plus roll, in ${isYd()?'yards':'metres'}. It fills in distances you skip, and later helps the caddie. Leave a club blank and the app uses your rounds or a typical number for your handicap.</span>
+      <span class="small muted">How far each club goes for you, carry plus roll, in ${isYd()?'yards':'metres'}. It helps the caddie suggest clubs. Leave a club blank and the app uses your rounds or a typical number for your handicap.</span>
       <div class="baggrid">${BAG.map(([k,l])=>{ const lr=learnedClub(k); return `<label for="bag_${k}">${l}</label><input id="bag_${k}" class="field num" type="number" inputmode="numeric" data-bag="${k}" value="${S.bag[k]?lenShow(S.bag[k]):''}" placeholder="${lenShow(lr||Math.round(typicalDrive(hc)*(CLUB_RATIO[k]||.7)))}"><span class="small muted">${lr?'from rounds':S.bag[k]?'':'typical'}</span>`; }).join('')}</div>
-    </div>
-    <div class="card stack">
-      <div class="setrow"><div><b>Fill in skipped details</b><div class="small muted">Skip something and the app makes a sensible guess, tagged on the hole so you can fix it. A wrong guess only shifts strokes gained between parts of your game on that hole, never your total.</div></div><button class="switch ${S.assumeOn?'on':''}" data-act="toggle" data-val="assumeOn" aria-label="Fill in skipped details" aria-pressed="${S.assumeOn}"></button></div>
-      <details class="assume"><summary>What gets assumed</summary><ul class="small">
-        <li><b>Tee shot finish:</b> fairway.</li>
-        <li><b>Distance left after the tee shot:</b> hole length minus that club's distance from My bag (driver if no club), so ${lenShow(clubDist('driver',hc).m)} ${u} with the driver.</li>
-        <li><b>Penalties:</b> none.</li>
-        <li><b>Chip or bunker shot, no distance:</b> ${lenShow(15)} ${u}; from the fringe inside ${lenShow(10)} ${u}, otherwise the rough. One shot.</li>
-        <li><b>Putts:</b> 2, unless the score only allows fewer.</li>
-        <li><b>First putt after an approach:</b> about 7% of the approach distance for your handicap (from ${lenShow(85)} ${u}, about ${toShow('fp',Math.round(85*0.07*(1+Math.max(0,hc)/40)*10)/10)} ${puttU()}).</li>
-        <li><b>First putt after a chip:</b> about 10% of the chip distance, at least ${toShow('fp',1)} ${puttU()}.</li>
-        <li><b>The score always wins.</b> If the shots don't add up, the hole is flagged for you to check.</li>
-        <li>After about 5 rounds, putt and chip guesses switch to your own averages.</li>
-      </ul></details>
     </div>
     <div class="card">
       <h3>Units</h3>
@@ -1303,11 +1300,11 @@ function vHole(){
       <div class="seg">${[['none','No penalty'],['drop','Penalty drop'],['retee','OB, re-teed']].map(([k,l])=>`<button class="${(h.teePen||'none')===k?'on':''}" data-act="set" data-field="teePen" data-val="${k}">${l}</button>`).join('')}</div>
       ${h.teeLie&&h.teeLie!=='green'?`<div class="lab"><span class="small muted">${h.teePen==='drop'?'Distance to the hole from your drop':h.teePen==='retee'?'Distance left after your second tee shot':'Distance left to the hole'}</span><span class="small muted">${isYd()?'yards':'metres'}</span></div>
       ${distField('teeDist',teeChoices(h.len),u,toShow('teeDist',h.teeDist),'Distance left after tee shot')}${assumeHint(h,'teeDist')}`:h.teeLie?'':assumeHint(h,'teeDist')}
-      ${h.teeLie==='green'?`<span class="small muted">Drove the green. Your first putt below covers it.</span>`:''}
+      ${h.teeLie==='green'?((h.derived||{}).teeLie?derivedNote(h,'teeLie'):`<span class="small muted">Drove the green. Your first putt below covers it.</span>`):''}
     </section>`:''}
 
     <section id="sec-atg" class="sec${uns(h,['atg','atgLie','atgDist','atgShots'])}${asm(h,['atgLie','atgDist'])}"><div class="lab"><h3>Chip, pitch or bunker shot</h3><span class="small muted">within 30 ${u}, off the green</span></div>
-      <div class="seg"><button class="${!h.atg?'on':''}" data-act="set" data-field="atg" data-val="0">None</button><button class="${h.atg?'on':''}" data-act="set" data-field="atg" data-val="1">Yes, I had one</button></div>
+      <div class="seg"><button class="${!h.atg?'on':''}" data-act="set" data-field="atg" data-val="0">None</button><button class="${h.atg?'on':''}" data-act="set" data-field="atg" data-val="1">Yes, I had one</button></div>${derivedNote(h,'atg')}
       ${h.atg?`<span class="small muted">Where was the first one from?</span>
         <div class="chips wide">${LIES_ATG.map(([k,l])=>chip('atgLie',k,l,h.atgLie===k)).join('')}</div>${assumeHint(h,'atgLie')}
         <div class="lab"><span class="small muted">Distance to the hole</span><span class="small muted">${isYd()?'yards':'metres'}</span></div>
@@ -1316,7 +1313,7 @@ function vHole(){
     </section>
 
     <section id="sec-putt" class="sec${uns(h,['putts','fp'])}${asm(h,['putts','fp'])}"><div class="lab"><h3>Putting</h3></div>
-      <div class="chips">${[0,1,2,3,4].map(p=>chip('putts',p,p,Number(h.putts)===p&&h.putts!=null,p===0?'holed off green':p===1?'putt':'putts')).join('')}</div>
+      <div class="chips">${[0,1,2,3,4].map(p=>chip('putts',p,p,Number(h.putts)===p&&h.putts!=null,p===0?'holed off green':p===1?'putt':'putts')).join('')}</div>${derivedNote(h,'putts')}${h.atg&&Number(h.atgShots||1)===1&&h.putts!=null&&Number(h.putts)<=1?`<span class="savepill">✓ ${h.atgLie==='sand'?'Sand save':'Up and down'}</span>`:''}
       ${Number(h.putts)>0?`<div class="lab"><span class="small muted">First putt length (a pace is about ${isFt()?'3 feet':'a metre'})</span><span class="small muted">${isFt()?'feet':'metres'}</span></div>${distField('fp',isFt()?PUTT_FT:PUTT_M,puttU(),toShow('fp',h.fp),'First putt length')}${assumeHint(h,'fp')}`:''}${h.putts==null?assumeHint(h,'putts'):''}
     </section>
 
@@ -1399,11 +1396,23 @@ function usualDrive(r){
 }
 function roundFlags(r){
   const out=[], ok=new Set(r.flagOk||[]), drive=usualDrive(r);
+  const anyScore=r.holes.some(h=>h.score!=null&&h.score!=='');
   r.holes.forEach((h,i)=>{
-    if(h.score==null||h.score==='') return;
-    const P=shotParts(h), s=Number(h.score), n=h.n;
-    const add=(kind,type,text,fixes)=>{ const key=i+':'+kind; if(!ok.has(key)) out.push({key,i,n,type,text,fixes}); };
-    const set=(o)=>()=>{ Object.assign(h,o); if(h.assumed){ h.assumed=h.assumed.filter(f=>!(f in o)); if(!h.assumed.length) delete h.assumed; } };
+    const n=h.n, par=Number(h.par);
+    const add=(kind,type,text,fixes,missing)=>{ const key=i+':'+kind; if(missing||!ok.has(key)) out.push({key,i,n,type,text,fixes,missing}); };
+    const set=(o)=>()=>{ Object.assign(h,o); if(h.assumed){ h.assumed=h.assumed.filter(f=>!(f in o)); if(!h.assumed.length) delete h.assumed; } if(h.derived) Object.keys(o).forEach(f=>{ delete h.derived[f]; }); deriveHoleFor(h); };
+    const ask=(kind,text,opts)=>add(kind,'Missing',text,opts.map(([l,o])=>({l,f:set(o),chip:true})),true);
+    // blanks: answered right here on the card
+    if(h.score==null||h.score===''){ if(anyScore) ask('noscore','No score yet.',[par-1,par,par+1,par+2,par+3].map(v=>[String(v),{score:v}])); return; }
+    let miss=false;
+    if(par>=4&&!h.teeLie){ ask('teeLie','Where did the tee shot finish?',LIES_TEE.map(([k,l])=>[l,{teeLie:k}])); miss=true; }
+    else if(par>=4&&h.teeLie!=='green'&&(h.teeDist==null||h.teeDist==='')){ ask('teeDist',`How far was left after the tee shot? (${fullU()})`,teeChoices(h.len).map(v=>[String(v),{teeDist:toStore('teeDist',v)}])); miss=true; }
+    if(h.atg&&!h.atgLie){ ask('atgLie','Where was the chip or bunker shot from?',LIES_ATG.map(([k,l])=>[l,{atgLie:k}])); miss=true; }
+    else if(h.atg&&(h.atgDist==null||h.atgDist==='')){ ask('atgDist',`How far was the chip or bunker shot? (${fullU()})`,ATG_CH.map(v=>[String(v),{atgDist:toStore('atgDist',v)}])); miss=true; }
+    if(h.putts==null||h.putts===''){ ask('putts','How many putts?',[0,1,2,3,4].map(v=>[String(v),{putts:v}])); miss=true; }
+    else if(Number(h.putts)>0&&(h.fp==null||h.fp==='')){ ask('fp',`How long was the first putt? (${puttU()})`,(isFt()?PUTT_FT:PUTT_M).map(v=>[String(v),{fp:toStore('fp',v)}])); miss=true; }
+    if(miss) return;
+    const P=shotParts(h), s=Number(h.score);
     const plural=(k,w)=>`${k} ${w}${k===1?'':'s'}`;
     // 1. shots don't add up
     if(s<P.logged){
@@ -1449,15 +1458,16 @@ function vReview(){
   const fl=roundFlags(r); S._fx=[];
   const done=r.holes.filter(h=>h.score!=null&&h.score!=='');
   const score=done.reduce((a,h)=>a+Number(h.score),0), par=done.reduce((a,h)=>a+Number(h.par),0), tp=score-par;
-  const n=fl.length, resolved=(r.flagOk||[]).length+(r.flagFixed||0);
+  const n=fl.length, nMiss=fl.filter(f=>f.missing).length, resolved=(r.flagOk||[]).length+(r.flagFixed||0);
   return `<div class="top"><button class="btn ghost" data-act="backholes">← Holes</button><span class="brand">Check round</span><span></span></div>
   <div class="stack">
     <div class="hero revhero"><span class="eyebrow">${esc(r.course)} · ${fmtDate(r.date)}</span>
       <div class="row between" style="flex-wrap:nowrap;align-items:flex-end"><div><div class="revscore">${score}</div><span class="small" style="opacity:.8">${tp===0?'Level par':tp>0?'+'+tp:tp} · ${done.length} hole${done.length===1?'':'s'}</span></div>
       <div class="revcount ${n?'':'ok'}">${n?`<b>${n}</b><span>thing${n===1?'':'s'} to check<br>before saving</span>`:`<b>✓</b><span>Everything<br>adds up</span>`}</div></div>
     </div>
-    ${n?`<span class="small muted">Tap a fix and it's done. If something odd really happened, tap "It's correct".</span>`:resolved?`<span class="small muted">All sorted. Your strokes gained will be spot on.</span>`:''}
-    ${fl.map(f=>{ const btns=f.fixes.map(x=>{ if(x.go!=null) return `<button class="btn small" data-act="fixhole" data-i="${x.go}">${esc(x.l)}</button>`; S._fx.push({f:x.f,key:f.key}); return `<button class="btn small primary" data-act="flagfix" data-val="${S._fx.length-1}">${esc(x.l)}</button>`; }).join('');
+    ${n?`<span class="small muted">${nMiss?'Tap the answer on each card. ':''}${n>nMiss?`Tap a fix and it's done. If something odd really happened, tap "It's correct".`:''}</span>`:resolved?`<span class="small muted">All sorted. Your strokes gained will be spot on.</span>`:''}
+    ${fl.map(f=>{ const btns=f.fixes.map(x=>{ if(x.go!=null) return `<button class="btn small" data-act="fixhole" data-i="${x.go}">${esc(x.l)}</button>`; S._fx.push({f:x.f,key:f.key}); return x.chip?`<button class="chip small" data-act="flagfix" data-val="${S._fx.length-1}">${esc(x.l)}</button>`:`<button class="btn small primary" data-act="flagfix" data-val="${S._fx.length-1}">${esc(x.l)}</button>`; }).join('');
+      if(f.missing) return `<div class="card flagcard missing"><div><span class="flagtype">Missing</span><b class="flagtxt">Hole ${f.n}: ${esc(f.text)}</b></div><div class="chips wide fixchips">${btns}</div></div>`;
       return `<div class="card flagcard"><div class="row between" style="flex-wrap:nowrap;align-items:flex-start;gap:10px"><div><span class="flagtype">${esc(f.type)}</span><b class="flagtxt">Hole ${f.n}: ${esc(f.text)}</b></div></div>
         <div class="row" style="gap:8px;align-items:center">${btns}<button class="linkbtn" data-act="flagok" data-val="${esc(f.key)}">It's correct</button></div></div>`; }).join('')}
     <button class="btn big primary" data-act="savereview" ${n?'disabled':''}>${n?`Save round (${n} to check)`:'Save round'}</button>
@@ -1567,12 +1577,46 @@ async function persistRound(r){
   return 'Saved on this phone.';
 }
 const NEXT_SEC={score:p=>p>=4?'sec-tee':'sec-atg',teeDist:()=>'sec-atg',atg0:()=>'sec-putt',atgDist:()=>'sec-atg',putts0:()=>'sec-pen',fp:()=>'sec-pen',teeLieGreen:()=>'sec-putt'};
+// ---- work out what the score already tells us, live as you tap ----
+// 'calc' = the only way the numbers add up; 'typical' = the usual case, easy to change
+function deriveHole(h){
+  const was=h.derived||{};
+  Object.keys(was).forEach(f=>{ if(f==='atg'){ h.atg=false; h.atgShots=1; ['atgLie','atgDist'].forEach(x=>{ if((h.assumed||[]).includes(x)){ h[x]=null; } }); } else h[f]=null; });
+  delete h.derived;
+  if(h.score==null||h.score==='') return;
+  const d={}, par=Number(h.par), score=Number(h.score);
+  const parts=()=>{ const ott=par>=4?(h.teePen==='retee'?2:1):0, penTee=par>=4&&(h.teePen==='drop'||h.teePen==='retee')?1:0;
+    return ott+penTee+(h.atg?Number(h.atgShots||1):0)+Number(h.penOther||0); };
+  // putts given, tee result not: no room left for an approach means the drive found the green
+  if(par>=4&&!h.teeLie&&h.putts!=null&&score-parts()-Number(h.putts)===0){ h.teeLie='green'; d.teeLie='calc'; }
+  if(h.putts==null){
+    const minApp=par>=4&&h.teeLie==='green'?0:1, rem=score-parts()-minApp;
+    if(rem===0||rem===1){ h.putts=rem; d.putts='calc'; if(rem===0) h.fp=null; }
+    else if(rem>=2&&S.smart){ h.putts=2; d.putts='typical'; }
+  } else if(!h.atgSet&&!h.atg&&!was.putts&&h.putts!=null&&!d.putts){
+    // you told us the putts: two or more shots still to place usually means a missed green and a chip
+    const nApp=score-parts()-Number(h.putts), dist=par===3?Number(h.len):(h.teeLie==='green'?0:Number(h.teeDist||0));
+    if(nApp>=2&&(dist===0||dist>40)&&!(par>=4&&h.teeLie==='green')){ h.atg=true; h.atgShots=1; d.atg='typical'; }
+  }
+  if(Object.keys(d).length) h.derived=d;
+}
+function deriveHoleFor(h){ deriveHole(h); }
+function derivedNote(h,f){
+  const k=(h.derived||{})[f]; if(!k) return '';
+  const sc=Number(h.score), par=Number(h.par), names={'-3':'an albatross','-2':'an eagle','-1':'a birdie','0':'par','1':'a bogey','2':'a double'};
+  const nm=names[String(sc-par)]||`a ${sc}`;
+  const t=f==='putts'?(k==='calc'?(h.putts===0?`No putts: ${nm} means you holed it from off the green.`:`1 putt: anything more and it wouldn't be ${nm}.`):`2 putts for now. Tap if it was different.`)
+    :f==='teeLie'?`On the green off the tee: it's the only way ${nm} adds up with those putts.`
+    :f==='atg'?`${nm[0].toUpperCase()+nm.slice(1)} with ${h.putts} putt${h.putts===1?'':'s'} usually means a missed green and a chip. Tap None if not.`:'';
+  return `<span class="small derivednote ${k}">${k==='calc'?'✓ ':''}${esc(t)}</span>`;
+}
 function setField(f,raw){
   const h=hole(); let v=raw;
   if(['score','putts','atgShots','penOther'].includes(f)) v=raw===''||raw==null?null:Number(raw);
   if(['fp','teeDist','atgDist'].includes(f)) v=toStore(f,raw);
   if(f==='atg') v=raw==='1'||raw===true;
-  const wasPutts=h.putts;
+  if(h.derived&&h.derived[f]){ delete h.derived[f]; if(!Object.keys(h.derived).length) delete h.derived; }
+  if(f==='atg') h.atgSet=true;
   h[f]=v;
   h.unsure=(h.unsure||[]).filter(x=>x!==f);
   if(h.assumed){ h.assumed=h.assumed.filter(x=>x!==f); (ASSUME_DEPS[f]||[]).forEach(d=>{ if(h.assumed.includes(d)){ h[d]=null; h.assumed=h.assumed.filter(x=>x!==d); } }); if(!h.assumed.length) delete h.assumed; }
@@ -1580,8 +1624,8 @@ function setField(f,raw){
     if(h.teeLie&&h.teeLie!=='green'&&h.teeDist!=null&&h.teeDist<=30){ h.atg=true; h.atgLie=h.teeLie==='recovery'?'rough':h.teeLie; h.atgDist=h.teeDist; }
   }
   if(f==='atg'&&v&&!h.atgShots) h.atgShots=1;
+  deriveHole(h);
   if(S.smart){
-    if(f==='score'&&wasPutts==null) h.putts=2;
     const p=Number(h.par);
     S.scrollTo= f==='score'?NEXT_SEC.score(p) : f==='teeDist'?'sec-atg' : (f==='teeLie'&&v==='green')?'sec-putt' : (f==='atg'&&!v)?'sec-putt' : f==='fp'?'sec-pen' : (f==='putts'&&v===0)?'sec-pen' : null;
   }
@@ -1776,7 +1820,7 @@ async function loadAll(){
   ]);
   if(pr.data&&pr.data.display_name) me.name=pr.data.display_name;
   const pd=pr.data&&pr.data.data;
-  if(pd&&pd.at&&pd.at>lsGet('sg.profileAt',0)){ if(pd.hcp!==undefined){ S.hcp=pd.hcp; lsSet('sg.hcp',S.hcp); } if(pd.goal!==undefined){ S.goal=pd.goal; lsSet('sg.goal',S.goal); } if(pd.bag){ S.bag=pd.bag; lsSet('sg.bag',S.bag); } if(pd.assumeOn!=null){ S.assumeOn=pd.assumeOn; lsSet('sg.assumeOn',S.assumeOn); } if(pd.goals){ S.goals=pd.goals; lsSet('sg.goals',S.goals); } if(pd.plan){ S.plan=pd.plan; lsSet('sg.plan',S.plan); } lsSet('sg.profileAt',pd.at); }
+  if(pd&&pd.at&&pd.at>lsGet('sg.profileAt',0)){ if(pd.hcp!==undefined){ S.hcp=pd.hcp; lsSet('sg.hcp',S.hcp); } if(pd.goal!==undefined){ S.goal=pd.goal; lsSet('sg.goal',S.goal); } if(pd.bag){ S.bag=pd.bag; lsSet('sg.bag',S.bag); }  if(pd.goals){ S.goals=pd.goals; lsSet('sg.goals',S.goals); } if(pd.plan){ S.plan=pd.plan; lsSet('sg.plan',S.plan); } lsSet('sg.profileAt',pd.at); }
   else if(!pd||!pd.at) saveProfile();
   if(!rs.error){
     const remote=(rs.data||[]).map(x=>x.data).filter(r=>r&&r.id&&Array.isArray(r.holes));
