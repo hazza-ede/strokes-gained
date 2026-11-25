@@ -142,3 +142,15 @@ tr.me td{background:var(--accent-soft)}
 .tabs button.on{background:transparent}
 body{-webkit-tap-highlight-color:transparent}
 input,textarea,select{font-size:16px}
+/* batch 1: My bag, smart assumptions, recap, conditions */
+.baggrid{display:grid;grid-template-columns:1fr 96px 84px;gap:6px 10px;align-items:center}
+.baggrid .field{padding:8px 10px}
+.sec.assumed{border-style:dashed;border-color:var(--accent)}
+.dot.assumed{border-style:dashed}
+.assumenote{background:var(--accent-soft);border:1px dashed var(--accent);border-radius:10px;padding:10px 12px;font-size:.9rem}
+.hint{display:block;margin-top:2px}
+.tag.soft{background:var(--accent-soft);border-color:var(--line);color:var(--accent);text-transform:none;letter-spacing:0;font-weight:500}
+.recaprow{display:grid;grid-template-columns:90px 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+details.assume summary{cursor:pointer;font-weight:600;font-size:.92rem;padding:4px 0}
+details.assume ul{margin:6px 0 0;padding-left:18px;display:grid;gap:4px;color:var(--muted)}
+details.assume b{color:var(--ink);font-weight:600}
