@@ -200,3 +200,7 @@ body.noscroll{overflow:hidden}
 .modal .steps{counter-reset:s;list-style:none;padding:0;gap:10px}
 .modal .steps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start;line-height:1.45}
 .modal .steps li::before{content:counter(s);display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.85rem}
+/* app feel: no zooming, just scrolling and tapping */
+html,body{touch-action:pan-y;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+button,a,input,select,textarea,label,[data-act]{touch-action:manipulation}
+.tbl,.subtabs,.chips,.coursegrid{touch-action:pan-x pan-y}
