@@ -703,7 +703,7 @@ function render(){
   [S.round,...(S.rounds||[])].forEach(r=>{ if(r&&!r._si){ fillSI(r.holes,r.course); r._si=1; } });
   const app=document.getElementById('app'), strip=document.getElementById('strip'), tabs=document.getElementById('tabs');
   const tabViews=['home','stats','improve','mygolf'], TABL={home:'Rounds',stats:'Stats',improve:'Improve',mygolf:'My golf'};
-  if(S.view==='learn') S.view='improve'; if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='stats'; S.statsTab='mates'; }
+  if(S.view==='learn') S.view='improve'; if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='mygolf'; S.myTab='mates'; } if(S.statsTab==='mates'){ S.statsTab='overview'; S.view==='stats'&&(S.view='mygolf',S.myTab='mates'); }
   strip.hidden=S.view!=='hole'; tabs.hidden=!tabViews.includes(S.view);
   document.body.classList.toggle('holeview',S.view==='hole');
   const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,auth:vAuth,setup:vSetup,hole:vHole,review:vReview,talk:vTalk,results:vResults,share:vShare}[S.view];
@@ -850,8 +850,8 @@ function vPath(rounds,isExample){
 }
 
 // ----- stats -----
-const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['detail','Deep dive'],['badges','Badges'],['mates','Mates']]);
-const whoSeg=statsTabs;
+const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['detail','Deep dive'],['badges','Badges']]);
+const whoSeg=()=>subTabs('mytab',S.myTab||'me',[['me','My game'],['mates','Friends']]);
 function bounceHtml(rs){
   const bb=bounceBack(rs), pct=bb.blow?Math.round(bb.ok/bb.blow*100):null;
   return `<div class="card stack">${bb.blow?`<div class="row between" style="flex-wrap:nowrap"><span>After a double or worse, you made ${myHcp(null)>18?'double':'bogey'} or better on the next hole</span><b class="bigsg ${pct>=60?'pos':pct<40?'neg':''}" style="font-size:2.4rem">${pct}%</b></div>
@@ -924,7 +924,6 @@ function badgesHtml(){
 }
 const condTags=r=>(r.cond||[]).map(c=>` <span class="tag soft">${esc((CONDS.find(x=>x[0]===c)||[,c])[1])}</span>`).join('');
 function vStats(){
-  if(S.statsTab==='mates') return vMates();
   const real=statRounds(), anyCond=realRounds().some(r=>(r.cond||[]).length), rs=real.length?chrono(real):[EXAMPLE_ROUND], ex=!real.length;
   const top=`<div class="top"><span class="brand">Stats</span>${sampleTag(ex)}</div>${statsTabs()}`;
   const nOut=realRounds().length-real.length, tough=nOut?`<span class="small muted">${nOut} round${nOut>1?'s':''} left out of these numbers. Open a round to change it.</span>`:'';
@@ -996,15 +995,15 @@ function mateRows(){
     const avg=key=>rs.length?rs.reduce((a,r)=>a+Number(r.s0[key]||0)*k(r),0)/rs.length:null;
     return {id:p._id, me:p._id===uid, hcp:p.hcp, n:(p.rounds||[]).length, rs, all:Array.isArray(p.rounds)?p.rounds:[], total:avg('total'), ott:avg('ott'), app:avg('app'), atg:avg('atg'), putt:avg('putt')}; }).filter(x=>x.rs.length);
 }
-const nameOf=id=>id===uid?'You':(S.names[id]||'A mate');
+const nameOf=id=>id===uid?'You':(S.names[id]||'A friend');
 function vMates(){
-  if(!uid) return `<div class="top"><span class="brand">Stats</span></div><div class="stack">${whoSeg()}<div class="card stack"><h2>Compare with your mates</h2><p class="muted" style="margin:0">Sign in to compare with your mates. Your rounds still save on this phone.</p></div></div>`;
+  if(!uid) return `<div class="top"><span class="brand">My golf</span></div><div class="stack">${whoSeg()}<div class="card stack"><h2>Compare with your friends</h2><p class="muted" style="margin:0">Sign in to compare with your friends. Your rounds still save on this phone.</p></div></div>`;
   const rows=mateRows().sort((a,b)=>b.total-a.total);
   const crowns=CATS.map(([k,l])=>{ const best=[...rows].sort((a,b)=>b[k]-a[k])[0]; return best?{l:{ott:'Best driver',app:'Best iron player',atg:'Best short game',putt:'Best putter'}[k],who:nameOf(best.id),v:best[k]}:null; }).filter(Boolean);
   const weekAgo=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
   let rotw=null; (S.mates||[]).forEach(p=>(Array.isArray(p.rounds)?p.rounds:[]).forEach(r=>{ if(r&&r.sm&&String(r.date)>=weekAgo&&Number(r.holes)>0){ const v=Number(r.sm.total)*18/Number(r.holes); if(!rotw||v>rotw.v) rotw={id:p._id,v,r}; } }));
   return `
-  <div class="top"><span class="brand">Stats</span><span class="small muted">${S.matesState==='loading'?'<span class="spinner"></span> Loading':S.matesState==='slow'?'Can\'t reach the group right now':'<button class="btn ghost small" data-act="refreshmates">Refresh</button>'}</span></div>
+  <div class="top"><span class="brand">My golf</span><span class="small muted">${S.matesState==='loading'?'<span class="spinner"></span> Loading':S.matesState==='slow'?'Can\'t reach the group right now':'<button class="btn ghost small" data-act="refreshmates">Refresh</button>'}</span></div>
   <div class="stack">
     ${whoSeg()}
     <div class="card"><div class="setrow"><div><b>Share my stats with the group</b><div class="small muted">Everyone signed in to the app sees your rounds' strokes gained, not your hole-by-hole detail.</div></div><button class="switch ${S.sharing?'on':''}" data-act="sharing" aria-label="Share my stats" aria-pressed="${S.sharing}"></button></div></div>
@@ -1014,8 +1013,8 @@ function vMates(){
       ${rows.map(r=>`<tr class="${r.me?'me':''}"><td>${esc(nameOf(r.id))}</td><td>${esc(fmtHcp(r.hcp))||'–'}</td><td>${r.n}</td>${['ott','app','atg','putt'].map(k=>`<td class="${cls(r[k])}">${f1(r[k])}</td>`).join('')}<td class="${cls(r.total)}"><b>${f1(r.total)}</b></td></tr>`).join('')}
       </tbody></table></div></div>
       <div class="crowns">${crowns.map(c=>`<div class="crown"><span class="small muted">${c.l}</span><div class="who">${esc(c.who)}</div><span class="small num ${cls(c.v)}">${f1(c.v)} per round</span></div>`).join('')}</div>`
-    :`<div class="card stack"><h2>No one's sharing yet</h2><p class="muted" style="margin:0">Turn on sharing above once you've saved a round. Your mates do the same and the leaderboard fills in.</p></div>`}
-    <div class="card small muted">To bring mates in, send them the app's link. They create an account, turn on sharing here, and they're on the leaderboard.</div>
+    :`<div class="card stack"><h2>No one's sharing yet</h2><p class="muted" style="margin:0">Turn on sharing above once you've saved a round. Your friends do the same and the leaderboard fills in.</p></div>`}
+    <div class="card small muted">To bring friends in, send them the app's link. They create an account, turn on sharing here, and they're on the leaderboard.</div>
   </div>`;
 }
 
@@ -1023,9 +1022,11 @@ function vMates(){
 function seg(act,cur,opts){ return `<div class="seg">${opts.map(([k,l])=>`<button class="${cur===k?'on':''}" data-act="${act}" data-val="${k}">${l}</button>`).join('')}</div>`; }
 function vMyGolf(){
   const hc=S.hcp!=null?S.hcp:10, u=fullU();
+  if(S.myTab==='mates') return vMates();
   return `
   <div class="top"><span class="brand">My golf</span></div>
   <div class="stack">
+    ${whoSeg()}
     <div class="card stack">
       <h3>My game</h3>
       <div class="row" style="flex-wrap:nowrap">
@@ -1053,7 +1054,7 @@ function vMyGolf(){
     </div>
     <div class="card stack">
       <h3>Account</h3>
-      ${uid?`<div><label class="small muted" for="myname">Your name (shown to your mates)</label><input id="myname" class="field" data-me="1" value="${esc(me.name)}"></div><div class="row between"><span class="small muted">${esc(me.email)}</span><button class="btn" data-act="signout">Sign out</button></div>`:CONFIGURED?`<div class="row between"><span class="small muted">Not signed in. Rounds stay on this phone.</span><button class="btn primary" data-act="signin">Sign in</button></div>`:`<span class="small muted">Accounts aren't set up yet, so rounds stay on this phone.</span>`}
+      ${uid?`<div><label class="small muted" for="myname">Your name (shown to your friends)</label><input id="myname" class="field" data-me="1" value="${esc(me.name)}"></div><div class="row between"><span class="small muted">${esc(me.email)}</span><button class="btn" data-act="signout">Sign out</button></div>`:CONFIGURED?`<div class="row between"><span class="small muted">Not signed in. Rounds stay on this phone.</span><button class="btn primary" data-act="signin">Sign in</button></div>`:`<span class="small muted">Accounts aren't set up yet, so rounds stay on this phone.</span>`}
     </div>
     ${S.rounds.some(r=>r.demo)?`<div class="card stack"><h3>Sample rounds</h3><span class="small muted">${S.rounds.filter(r=>r.demo).length} made-up rounds at Glenelg are in your history so you can see goals, practice plans and achievements working. Removing them also resets your goals.</span>${S.confirmDemo?`<button class="btn danger" data-act="cleardemo">Tap again to remove them</button>`:`<button class="btn" data-act="askdemo">Remove sample rounds</button>`}</div>`:''}
     <p class="small muted">Tour figures follow published PGA Tour benchmarks. Handicap baselines slide smoothly from any handicap; for now they are an early estimate and will be replaced with researched amateur data.</p>
@@ -1388,7 +1389,7 @@ function checkHtml(r,per){
   return `${bad.length?`<div class="card stack"><h3>Check ${bad.length===1?'this hole':'these holes'}</h3>${bad.map(x=>`<button class="roundrow" data-act="fixhole" data-i="${x.i}"><span><b>Hole ${x.h.n}</b><br><span class="small muted">${esc(x.s.err)}</span></span><span class="btn small">Fix</span></button>`).join('')}</div>`:''}
   ${nAss?`<span class="small muted">${nAss} detail${nAss>1?'s were':' was'} filled in for you. Tap Edit holes to check them.</span>`:''}
   <div class="card stack leaveout ${r.excluded?'on':''}">
-    <div class="setrow"><div><b>Leave this round out of my stats</b><div class="small muted">${r.excluded?'It stays in your history, but your averages, trends, goals and mates ignore it.':'Feeling crook or just a write-off? It stays in your history either way.'}</div></div><button class="switch ${r.excluded?'on':''}" data-act="rexclude" aria-label="Leave this round out of my stats" aria-pressed="${!!r.excluded}"></button></div>
+    <div class="setrow"><div><b>Leave this round out of my stats</b><div class="small muted">${r.excluded?'It stays in your history, but your averages, trends, goals and the friends leaderboard ignore it.':'Feeling crook or just a write-off? It stays in your history either way.'}</div></div><button class="switch ${r.excluded?'on':''}" data-act="rexclude" aria-label="Leave this round out of my stats" aria-pressed="${!!r.excluded}"></button></div>
     ${r.excluded?`<span class="small muted">Why? (optional, just for you)</span><div class="chips wide">${LEAVE_WHY.map(([k,l])=>`<button class="chip ${r.excludeWhy===k?'on':''}" data-act="rwhy" data-val="${k}">${l}</button>`).join('')}</div>`:''}
   </div>`;
 }
@@ -1688,7 +1689,8 @@ document.addEventListener('click',e=>{
     case 'planplace': { const pl=S.plan.places||(S.plan.places=[]), i=pl.indexOf(val); if(i>=0) pl.splice(i,1); else pl.push(val); lsSet('sg.plan',S.plan); saveProfile(); break; }
     case 'cleardemo': { const ids=S.rounds.filter(r=>r.demo).map(r=>r.id); S.rounds=S.rounds.filter(r=>!r.demo); lsSet('sg.rounds',S.rounds); S.goals={sets:[],focus:[]}; lsSet('sg.goals',S.goals); saveProfile(); if(sb&&uid&&ids.length) sb.from('rounds').delete().in('id',ids).then(()=>{},()=>{}); S.confirmDemo=false; break; }
     case 'askdemo': S.confirmDemo=true; break;
-    case 'statswho': case 'statstab': S.statsTab=val; if(val==='mates'&&uid&&!S.mates) loadMates(); window.scrollTo(0,0); break;
+    case 'statswho': case 'statstab': S.statsTab=val; window.scrollTo(0,0); break;
+    case 'mytab': S.myTab=val; if(val==='mates'&&uid&&!S.mates) loadMates(); window.scrollTo(0,0); break;
     case 'scond': { const c=S.setup.cond||(S.setup.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); break; }
     case 'rexclude': case 'rwhy': { const r=S.viewing||S.round; if(a==='rexclude'){ r.excluded=!r.excluded; if(!r.excluded) delete r.excludeWhy; } else r.excludeWhy=r.excludeWhy===val?undefined:val; if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
     case 'rcond': { const r=S.viewing||S.round; const c=r.cond||(r.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
@@ -1870,9 +1872,9 @@ async function loadAll(){
 }
 async function loadMates(){
   if(!sb||!uid) return;
-  S.matesState='loading'; if(S.view==='stats'&&S.statsTab==='mates') render();
+  S.matesState='loading'; if(S.view==='mygolf'&&S.myTab==='mates') render();
   const {data,error}=await sb.from('players').select('user_id,display_name,data');
-  if(error){ S.matesState='slow'; if(S.view==='stats'&&S.statsTab==='mates') render(); return; }
+  if(error){ S.matesState='slow'; if(S.view==='mygolf'&&S.myTab==='mates') render(); return; }
   S.mates=(data||[]).map(p=>({...(p.data||{}),_id:p.user_id}));
   (data||[]).forEach(p=>{ S.names[p.user_id]=p.display_name||''; });
   S.sharing=S.mates.some(p=>p._id===uid);
@@ -1885,9 +1887,9 @@ function vAuth(){
   const A=S.auth, up=A.mode==='up';
   return `<div class="stack" style="padding-top:40px">
     <div><span class="brand">Strokes Gained</span><h1 style="margin-top:8px">${up?'Create your account':'Welcome back'}</h1></div>
-    <p class="muted" style="margin:0">${up?'Your rounds sync to your account, and you can compare with your mates.':'Sign in to pick up your rounds on this phone.'}</p>
+    <p class="muted" style="margin:0">${up?'Your rounds sync to your account, and you can compare with your friends.':'Sign in to pick up your rounds on this phone.'}</p>
     <form class="card stack" data-form="auth">
-      ${up?`<div><label class="small muted" for="aname">Your name (shown to your mates)</label><input id="aname" class="field" autocomplete="name" data-auth="name" value="${esc(A.name)}" required></div>`:''}
+      ${up?`<div><label class="small muted" for="aname">Your name (shown to your friends)</label><input id="aname" class="field" autocomplete="name" data-auth="name" value="${esc(A.name)}" required></div>`:''}
       <div><label class="small muted" for="aemail">Email</label><input id="aemail" class="field" type="email" autocomplete="email" inputmode="email" data-auth="email" value="${esc(A.email)}" required></div>
       <div><label class="small muted" for="apass">Password</label><input id="apass" class="field" type="password" autocomplete="${up?'new-password':'current-password'}" minlength="6" data-auth="password" value="${esc(A.password)}" required></div>
       ${A.err?`<div class="err">${esc(A.err)}</div>`:''}${A.msg?`<div class="flagnote">${esc(A.msg)}</div>`:''}
