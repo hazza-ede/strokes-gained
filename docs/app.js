@@ -351,23 +351,49 @@ function focusAreas(){
   if(!areas.length){ const rs=realRounds(); areas=needleMovers(rs.length?chrono(rs).slice(-6):[EXAMPLE_ROUND]).list.slice(0,3).map(x=>({k:x.k,title:x.title,w:Math.abs(x.v)})); }
   return areas;
 }
+const CAT_OF=k=>k.split('-')[0]; // ott, app, atg, putt
+function lossMap(){ const rs=realRounds(); return needleMovers(rs.length?chrono(rs).slice(-6):[EXAMPLE_ROUND]).all||{}; }
 function practicePlan(){
-  const mins=Number(S.plan.mins)||45, places=S.plan.places||[], areas=focusAreas(), rand=rng(S.planSeed||1);
+  const mins=Number(S.plan.mins)||45, places=S.plan.places||[], extra=S.plan.extra||[], rand=rng(S.planSeed||1);
+  const loss=lossMap(), titleOf=k=>(moverInfo(k)||[k])[0];
+  // Focus goals first, then any extra parts of the game the golfer ticked.
+  const areas=focusAreas().map(a=>({...a,why:'focus'}));
+  extra.forEach(c=>{ if(areas.some(a=>CAT_OF(a.k)===c)) return;
+    const keys=Object.keys(DRILL_LIB.reduce((o,d)=>{ Object.keys(d.areas).forEach(k=>{ if(CAT_OF(k)===c) o[k]=1; }); return o; },{}));
+    keys.sort((x,y)=>(loss[x]||0)-(loss[y]||0)); const k=keys[0];
+    if(k) areas.push({k,title:titleOf(k),w:Math.max(0.3,Math.abs(Math.min(0,loss[k]||0)))*0.7,why:'extra'}); });
   const warmAt=places.find(p=>WARMUPS[p]), warm=warmAt&&mins>=30?(mins>=75?10:5):0;
-  const budget=mins-warm, tw=areas.reduce((t,a)=>t+a.w,0)||1, W={}, target={}, got={};
-  areas.forEach(a=>{ W[a.k]=a.w; target[a.k]=budget*a.w/tw; got[a.k]=0; });
+  let budget=mins-warm; const W={}, target={}, got={};
+  const setW=()=>{ const tw=areas.reduce((t,a)=>t+a.w,0)||1; areas.forEach(a=>{ W[a.k]=a.w; target[a.k]=budget*a.w/tw; if(got[a.k]==null) got[a.k]=0; }); };
+  setW();
   const pool=DRILL_LIB.filter(d=>d.places.some(p=>places.includes(p)));
   const picked=[]; let left=budget;
-  const choose=(k,prefer)=>{ let best=null;
+  const usedPlaces=()=>new Set(picked.map(x=>x.at));
+  const choose=(k,prefer,onlyAt)=>{ let best=null;
     for(const d of pool){ if(picked.some(x=>x.d.id===d.id)||d.min>left||(d.areas[k]||0)<0.5) continue;
+      const at=onlyAt?(d.places.includes(onlyAt)?onlyAt:null):(d.places.find(p=>places.includes(p)&&!usedPlaces().has(p))||d.places.find(p=>places.includes(p)));
+      if(!at) continue;
       let sc=0; for(const a in d.areas) sc+=(W[a]||0)*d.areas[a];
-      if(prefer&&prefer.includes(d.type)) sc*=1.5; sc*=0.7+0.6*rand();
-      if(!best||sc>best.sc) best={d,sc}; }
-    return best&&best.d; };
-  const add=(d,k)=>{ picked.push({d,m:d.min,k}); left-=d.min; got[k]+=d.min; };
-  // One drill for each focus area first, biggest shot loss first.
-  [...areas].sort((x,y)=>y.w-x.w).forEach(a=>{ const d=choose(a.k); if(d) add(d,a.k); });
-  // Then share the rest of the time by how many shots each area costs: lengthen a drill, or add a game or pressure test.
+      if(!usedPlaces().has(at)) sc*=1.2; if(prefer&&prefer.includes(d.type)) sc*=1.5; sc*=0.7+0.6*rand();
+      if(!best||sc>best.sc) best={d,sc,at}; }
+    return best; };
+  const add=(c,k)=>{ picked.push({d:c.d,m:c.d.min,k,at:c.at}); left-=c.d.min; got[k]=(got[k]||0)+c.d.min; };
+  // 1. One drill for each focus or extra area, biggest shot loss first.
+  [...areas].sort((x,y)=>y.w-x.w).forEach(a=>{ const c=choose(a.k); if(c) add(c,a.k); });
+  // 2. Every place they ticked gets at least one drill, aimed at their biggest loss that can be practised there.
+  for(const pl of places){
+    if(usedPlaces().has(pl)||!pool.some(d=>d.places.includes(pl))) continue;
+    const keys=Object.keys(DRILL_LIB.filter(d=>d.places.includes(pl)).reduce((o,d)=>{ Object.keys(d.areas).forEach(k=>{ if(d.areas[k]>=0.5) o[k]=1; }); return o; },{})).sort((x,y)=>(loss[x]||0)-(loss[y]||0));
+    for(const k of keys){
+      if(!areas.some(a=>a.k===k)){ areas.push({k,title:titleOf(k),w:Math.max(0.25,Math.abs(Math.min(0,loss[k]||0)))*0.6,why:'place'}); setW(); }
+      let c=choose(k,null,pl);
+      while(!c&&picked.length>1){ // make room by dropping the smallest-loss drill that isn't the only one at its place
+        const drop=[...picked].filter(x=>picked.filter(y=>y.at===x.at).length>1||x.at!==pl).sort((a,b)=>(W[a.k]||0)-(W[b.k]||0))[0]; if(!drop) break;
+        picked.splice(picked.indexOf(drop),1); left+=drop.m; got[drop.k]-=drop.m; c=choose(k,null,pl); }
+      if(c){ add(c,k); break; }
+    }
+  }
+  // 3. Share the remaining time by how many shots each area costs: lengthen a drill, or add a game or pressure test.
   const done=new Set(); let guard=0;
   while(left>=5&&guard++<60){
     const live=areas.filter(a=>!done.has(a.k)&&picked.some(x=>x.k===a.k)).sort((x,y)=>(target[y.k]-got[y.k])-(target[x.k]-got[x.k]));
@@ -380,10 +406,10 @@ function practicePlan(){
     done.add(k);
   }
   const order={Technique:0,Skill:1,Game:2,Pressure:3};
-  picked.sort((a,b)=>order[a.d.type]-order[b.d.type]);
-  picked.forEach(x=>x.fixes=Object.keys(x.d.areas).filter(k=>W[k]&&x.d.areas[k]>=0.5).map(k=>areas.find(a=>a.k===k).title));
+  picked.sort((a,b)=>places.indexOf(a.at)-places.indexOf(b.at)||order[a.d.type]-order[b.d.type]);
+  picked.forEach(x=>{ x.fixes=Object.keys(x.d.areas).filter(k=>W[k]&&x.d.areas[k]>=0.5).map(k=>areas.find(a=>a.k===k)).filter(Boolean); x.why=(areas.find(a=>a.k===x.k)||{}).why; });
   const covered=new Set(picked.map(x=>x.k));
-  return {warm,warmText:warm?WARMUPS[warmAt]:'',items:picked,missing:areas.filter(a=>!covered.has(a.k)),mins,spare:left,areas};
+  return {warm,warmText:warm?WARMUPS[warmAt]:'',items:picked,missing:areas.filter(a=>a.why==='focus'&&!covered.has(a.k)),mins,spare:left,areas:areas.filter(a=>a.why==='focus')};
 }
 function bounceBack(rounds){
   let blow=0, ok=0, bird=0, bogeys=0, spiral=0;
@@ -716,13 +742,15 @@ function planHtml(){
     <div class="chips">${[20,30,45,60,90].map(m=>`<button class="chip ${Number(S.plan.mins)===m?'on':''}" data-act="planmins" data-val="${m}">${m}<span class="sub">min</span></button>`).join('')}</div>
     <span class="small muted">Where are you practising?</span>
     <div class="chips wide">${PLACES.map(([k,l])=>`<button class="chip ${(S.plan.places||[]).includes(k)?'on':''}" data-act="planplace" data-val="${k}">${l}</button>`).join('')}</div>
+    <span class="small muted">Also work on (optional)</span>
+    <div class="chips wide">${CATS.map(([k,l])=>`<button class="chip ${(S.plan.extra||[]).includes(k)?'on':''}" data-act="planextra" data-val="${k}">${l}</button>`).join('')}</div>
   </div>
   ${P.items.length?`<div class="card stack plancard">
     <div class="row between"><div><b class="planmins">${P.mins} min</b><div class="small muted">${P.items.length} drill${P.items.length>1?'s':''}${P.warm?' plus a warm-up':''}${P.spare>=5?` · ${P.spare} min spare to repeat your favourite`:''}</div></div><button class="btn" data-act="planshuffle">Shuffle drills</button></div>
     <ol class="plan">
       ${P.warm?`<li><div class="row between"><b>Warm up</b><span class="pill">${P.warm} min</span></div><span class="small muted">${esc(P.warmText)}</span></li>`:''}
       ${P.items.map(x=>`<li><div class="row between" style="flex-wrap:nowrap"><b>${esc(x.d.t)}</b><span class="pill">${x.m} min</span></div>
-        <div class="row" style="gap:6px"><span class="tag soft">${esc(x.d.type)}</span>${x.fixes.map(f=>`<span class="small muted">${esc(f)}</span>`).join('<span class="small muted">·</span>')}<span class="small muted">· ${esc(x.d.places.filter(p=>(S.plan.places||[]).includes(p)).map(placeName)[0]||'')}</span></div>
+        <div class="row" style="gap:6px"><span class="tag soft">${esc(x.d.type)}</span>${x.why!=='focus'?'<span class="tag extra">Extra</span>':''}${x.fixes.map(f=>`<span class="small muted">${esc(f.title)}</span>`).join('<span class="small muted">·</span>')}<span class="small muted">· ${esc(placeName(x.at))}</span></div>
         <span class="small">${esc(x.d.how)}</span><span class="small muted">Score it: ${esc(x.d.score)}</span></li>`).join('')}
     </ol>
     ${P.missing.length?`<span class="small muted">Not covered at ${(S.plan.places||[]).map(placeName).join(' or ').toLowerCase()||'these places'}: ${P.missing.map(x=>esc(x.title.toLowerCase())).join(', ')}. Add another place to include ${P.missing.length>1?'them':'it'}.</span>`:''}
@@ -1081,6 +1109,7 @@ document.addEventListener('click',e=>{
     case 'toggle': S[val]=!S[val]; lsSet('sg.'+val,S[val]); if(val==='assumeOn') saveProfile(); break;
     case 'focusgoal': { const f=S.goals.focus, i=f.indexOf(val); if(i>=0) f.splice(i,1); else f.push(val); lsSet('sg.goals',S.goals); saveProfile(); break; }
     case 'planshuffle': S.planSeed=(S.planSeed||1)+1; lsSet('sg.planSeed',S.planSeed); break;
+    case 'planextra': { const e=S.plan.extra||(S.plan.extra=[]), i=e.indexOf(val); if(i>=0) e.splice(i,1); else e.push(val); lsSet('sg.plan',S.plan); saveProfile(); break; }
     case 'planmins': S.plan.mins=Number(val); lsSet('sg.plan',S.plan); saveProfile(); break;
     case 'planplace': { const pl=S.plan.places||(S.plan.places=[]), i=pl.indexOf(val); if(i>=0) pl.splice(i,1); else pl.push(val); lsSet('sg.plan',S.plan); saveProfile(); break; }
     case 'cleardemo': { const ids=S.rounds.filter(r=>r.demo).map(r=>r.id); S.rounds=S.rounds.filter(r=>!r.demo); lsSet('sg.rounds',S.rounds); S.goals={sets:[],focus:[]}; lsSet('sg.goals',S.goals); saveProfile(); if(sb&&uid&&ids.length) sb.from('rounds').delete().in('id',ids).then(()=>{},()=>{}); S.confirmDemo=false; break; }
