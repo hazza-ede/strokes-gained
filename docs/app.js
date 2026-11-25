@@ -669,6 +669,63 @@ const subTabs=(act,cur,opts)=>`<div class="subtabs" role="tablist">${opts.map(([
 const sampleTag=on=>on?'<span class="tag">Sample data</span>':'';
 
 // ----- home -----
+// ----- Headline insights: plain-English summaries at the top of each tab -----
+const PLAIN={ott:'Off the tee',app:'Into the green',atg:'Around the green',putt:'On the green'}, SAY={ott:'driving',app:'approach play',atg:'chipping',putt:'putting'}, Cap=t=>t[0].toUpperCase()+t.slice(1);
+function snap(rs){ // per-18 strokes gained by part of the game vs the goal handicap, plus scoring
+  const base=String(goalHcp()), o={ott:0,app:0,atg:0,putt:0,total:0,score:0,n:0};
+  rs.forEach(r=>{ const {t}=roundSG(r,base); if(!t.holes) return; const k=18/t.holes; CATS.forEach(([c])=>o[c]+=t[c]*k); o.total+=t.total*k; o.score+=t.score*k; o.n++; });
+  if(o.n) ['ott','app','atg','putt','total','score'].forEach(c=>o[c]/=o.n); return o;
+}
+const hcpDrop=shots=>shots*0.9; // roughly: a shot a round saved takes about 0.9 off a handicap index
+function heroRows(o){
+  const order=CATS.map(([k])=>({k,v:o[k]})), worst=[...order].sort((a,b)=>a.v-b.v)[0], max=Math.max(1,...order.map(x=>Math.abs(x.v)));
+  const word=x=>x.k===worst.k&&x.v<-0.3?['Biggest leak','bad']:x.v<=-0.3?['Losing shots','warn']:x.v>=0.3?['Strength','good']:['On track','ok'];
+  return `<div class="herorows">${order.map(x=>{ const [w,c]=word(x); const pct=Math.round(Math.abs(x.v)/max*50); return `<div class="herorow"><span>${PLAIN[x.k]}</span><span class="hw ${c}">${w}</span><div class="hbar"><i style="${x.v<0?`right:50%;width:${pct}%`:`left:50%;width:${pct}%`}" class="${x.v<0?'neg':'pos'}"></i></div><b class="num">${f1(x.v)}</b></div>`; }).join('')}</div>`;
+}
+function heroHome(){
+  const rs=chrono(statRounds()).slice(-10); if(!rs.length) return '';
+  const o=snap(rs), worst=CATS.map(([k])=>({k,v:o[k]})).sort((a,b)=>a.v-b.v)[0], best=CATS.map(([k])=>({k,v:o[k]})).sort((a,b)=>b.v-a.v)[0], g=esc(fmtHcp(goalHcp()));
+  const head=worst.v<-0.3?`${Cap(SAY[worst.k])} is where most of your shots are going.`:`You're playing like a ${g} golfer right now.`;
+  const fix=Math.abs(Math.min(0,worst.v));
+  return `<div class="hero">
+    <span class="eyebrow">Your game in 10 seconds · last ${rs.length} round${rs.length>1?'s':''} vs a ${g} golfer</span>
+    <h2 class="herohead">${head}</h2>
+    ${heroRows(o)}
+    ${fix>=0.3?`<div class="herofix"><span>Fix your ${SAY[worst.k]} and you'd average</span><b class="num">${Math.round(o.score-fix)}</b><span>instead of <b class="num">${Math.round(o.score)}</b>. That's about <b>${hcpDrop(fix).toFixed(1)}</b> off your handicap.</span></div>`:''}
+    ${best.v>=0.3?`<span class="herofoot">Your ${SAY[best.k]} is your strength: it's worth ${f1(best.v)} a round.</span>`:''}
+  </div>`;
+}
+function heroStats(){
+  const rs=chrono(statRounds()); if(!rs.length) return '';
+  const g=esc(fmtHcp(goalHcp()));
+  if(rs.length<4){ const o=snap(rs); return `<div class="hero"><span class="eyebrow">Your scoring · ${rs.length} round${rs.length>1?'s':''}</span><h2 class="herohead">You're averaging ${Math.round(o.score)} and your best is ${Math.min(...rs.map(r=>roundSG(r,'0').t.score))}.</h2><span class="herofoot">Play ${4-rs.length} more round${4-rs.length>1?'s':''} and this will show what's getting better and what's slipping.</span></div>`; }
+  const recent=snap(rs.slice(-3)), before=snap(rs.slice(0,-3));
+  const ch=CATS.map(([k])=>({k,d:recent[k]-before[k]})).sort((a,b)=>b.d-a.d), up=ch[0], down=ch[ch.length-1], sd=recent.score-before.score;
+  return `<div class="hero">
+    <span class="eyebrow">What's changing · last 3 rounds vs the ${rs.length-3} before</span>
+    <h2 class="herohead">${sd<=-0.5?`You're scoring ${Math.abs(sd).toFixed(1)} shots better lately.`:sd>=0.5?`Your scores are up ${sd.toFixed(1)} shots lately.`:`Your scoring is steady.`}</h2>
+    <div class="herochg">
+      ${up.d>=0.2?`<div><span class="arrow good">▲</span><span><b>${Cap(SAY[up.k])}</b> is improving: ${f1(up.d)} a round</span></div>`:''}
+      ${down.d<=-0.2?`<div><span class="arrow bad">▼</span><span><b>${Cap(SAY[down.k])}</b> has slipped: ${f1(down.d)} a round</span></div>`:''}
+    </div>
+    <span class="herofoot">Averaging ${Math.round(recent.score)} over your last 3 rounds, compared with a ${g} golfer.</span>
+  </div>`;
+}
+function heroImprove(){
+  const rs=chrono(statRounds()).slice(-10); if(!rs.length) return '';
+  const nm=needleMovers(rs).list; if(!nm.length) return '';
+  const top=nm[0], next=nm[1], shots=Math.abs(top.v), half=shots/2;
+  return `<div class="hero">
+    <span class="eyebrow">Your biggest win</span>
+    <h2 class="herohead">${esc(top.title)} cost you <span class="hl">${shots.toFixed(1)} shots</span> a round.</h2>
+    <div class="herogrid">
+      <div><b class="num">${half.toFixed(1)}</b><span>shots a round if you halve it</span></div>
+      <div><b class="num">${hcpDrop(half).toFixed(1)}</b><span>off your handicap</span></div>
+      <div><b class="num">${Math.round(half*20)}</b><span>shots saved over a 20-round season</span></div>
+    </div>
+    ${next?`<span class="herofoot">Next biggest: ${esc(next.title.toLowerCase())}, ${Math.abs(next.v).toFixed(1)} a round.</span>`:''}
+  </div>`;
+}
 function vHome(){
   const real=statRounds(), showing=real.length?real:[EXAMPLE_ROUND];
   const avg={ott:0,app:0,atg:0,putt:0,total:0};
@@ -678,7 +735,7 @@ function vHome(){
   return `
   <div class="top"><span class="brand">Strokes Gained</span><span class="muted small">${uid?'Synced':'Saved on this phone'}</span></div>
   <div class="stack">
-    <h1>Where your shots go</h1>
+    ${heroHome()}
     <div class="small muted">Handicap <b class="num">${S.hcp!=null?esc(fmtHcp(S.hcp)):'not set'}</b> · Goal <b class="num">${esc(fmtHcp(goalHcp()))}</b> · <button class="linkbtn" data-act="tab" data-val="mygolf">Change</button></div>
     ${draft?`<button class="btn big primary" data-act="resume">Resume round · ${esc(S.round.course)} · hole ${S.idx+1}</button>`:''}
     <button class="btn big ${draft?'':'primary'}" data-act="newround">Start a new round</button>
@@ -761,6 +818,7 @@ function vStats(){
   const labels=rs.map(r=>shortDate(r.date));
   const hc=rs.filter(r=>r.hcp!=null);
   return `${top}<div class="stack">
+    ${heroStats()}
     ${secHead('Progress',`Strokes gained per 18 holes vs ${esc(S.base==='me'?`your current ${fmtHcp(myHcp(null))} handicap`:baseText(S.base,null))}`,'',true)}
     ${tough}
     <div class="card stack">
@@ -969,6 +1027,7 @@ function vImprove(){
   return `
   <div class="top"><span class="brand">Improve</span></div>
   <div class="stack">
+    ${heroImprove()}
     ${goalsHtml()}
     ${planHtml()}
     ${libraryHtml()}
