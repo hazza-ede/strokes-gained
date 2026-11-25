@@ -31,7 +31,14 @@ function E(lie,m,base,par){
 // so only the hand-over points between categories are needed.
 // Picked up: every shot actually played is charged to its own part of the game, measured
 // to where the ball was when you picked up. The shots never played count as neutral.
-function netDouble(h,hcp){ const s=Math.max(0,Math.round((Number(hcp)||0)/18)); return Number(h.par)+2+s; }
+// Net double bogey: par + 2 + the strokes your handicap gets on this hole (by stroke index when the course has it)
+function netDouble(h,hcp){
+  const ph=Math.round(Number(hcp)||0), si=Number(h.si);
+  let s;
+  if(si>=1&&si<=18){ if(ph>=0) s=Math.floor(ph/18)+(si<=ph%18?1:0); else { const a=-ph; s=-(Math.floor(a/18)+(si>18-(a%18)?1:0)); } }
+  else s=Math.round(ph/18);
+  return Number(h.par)+2+s;
+}
 function pickupSG(h,base){
   const out={ott:0,app:0,atg:0,putt:0,total:0,nApp:0,ok:false,err:null,pickup:true};
   if(h.score==null||h.score===''){ out.err='How many shots before you picked up?'; return out; }
