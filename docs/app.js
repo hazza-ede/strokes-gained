@@ -15,6 +15,10 @@ const TYPICAL_LEN={3:150,4:360,5:470};
 const PARS9=[4,4,3,5,4,4,3,4,5];
 const FT=0.3048, YD=0.9144;
 
+// Stroke index for clubs we know (men's card, same across the men's tees)
+const KNOWN_SI={'glenelg':[17,1,8,14,16,2,9,4,12,5,6,18,10,15,7,13,3,11]};
+function knownSI(name){ const c=String(name||'').toLowerCase(); const k=Object.keys(KNOWN_SI).find(x=>c.includes(x)); return k?KNOWN_SI[k]:null; }
+function fillSI(holes,name){ const si=knownSI(name); if(!si||!holes||holes.length!==18) return false; let ch=false; holes.forEach((h,i)=>{ if(h.si==null||h.si===''){ h.si=si[i]; ch=true; } }); return ch; }
 function ex(n,par,len,o){ return Object.assign({n,par,len,score:null,putts:null,fp:null,teeLie:null,teeDist:null,teePen:'none',teeClub:null,atg:false,atgLie:null,atgDist:null,atgShots:1,penOther:0,unsure:[]},o); }
 const EXAMPLE_ROUND={ id:'example', example:true, date:'2026-11-21', course:'Example course (sample data)', holes:[
   ex(1,4,365,{score:4,putts:2,fp:8,teeLie:'fairway',teeDist:135}),
@@ -696,6 +700,7 @@ const ICONS={
   settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>'
 };
 function render(){
+  [S.round,...(S.rounds||[])].forEach(r=>{ if(r&&!r._si){ fillSI(r.holes,r.course); r._si=1; } });
   const app=document.getElementById('app'), strip=document.getElementById('strip'), tabs=document.getElementById('tabs');
   const tabViews=['home','stats','improve','mygolf'], TABL={home:'Rounds',stats:'Stats',improve:'Improve',mygolf:'My golf'};
   if(S.view==='learn') S.view='improve'; if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='stats'; S.statsTab='mates'; }
@@ -1242,12 +1247,13 @@ function vSetup(){
         <label class="small muted" for="rhcp">Handicap today</label><input id="rhcp" class="field num" style="max-width:90px" inputmode="decimal" data-setup="hcp" value="${esc(st.hcp)}" placeholder="8.3"></div>
       <span class="small muted">Weather (optional)</span><div class="chips wide">${CONDS.map(([k,l])=>`<button class="chip ${(st.cond||[]).includes(k)?'on':''}" data-act="scond" data-val="${k}">${l}</button>`).join('')}</div>
       <div class="seg"><button class="${st.holes.length===18?'on':''}" data-act="nholes" data-val="18">18 holes</button><button class="${st.holes.length===9?'on':''}" data-act="nholes" data-val="9">9 holes</button></div>
-      <p class="small muted" style="margin:0">Pars and lengths are saved with the course, so you only enter them once. No lengths handy? Leave the typical ones and fix them later.</p>
+      <p class="small muted" style="margin:0">Pars, lengths and stroke index are saved with the course, so you only enter them once. Index is the hole's handicap ranking on the card, used when you pick up. No lengths handy? Leave the typical ones and fix them later.</p>
       <div class="coursegrid">
-        <span class="small muted">Hole</span><span class="small muted">Par</span><span class="small muted">Length (${u})</span>
+        <span class="small muted">Hole</span><span class="small muted">Par</span><span class="small muted">Length (${u})</span><span class="small muted">Index</span>
         ${st.holes.map((h,i)=>`<b class="num">${i+1}</b>
           <div class="seg">${[3,4,5].map(p=>`<button class="${h.par===p?'on':''}" data-act="cpar" data-i="${i}" data-val="${p}" aria-label="Hole ${i+1} par ${p}">${p}</button>`).join('')}</div>
-          <input class="field num" id="len${i}" type="number" inputmode="numeric" min="40" max="800" data-clen="${i}" value="${h.len===''?'':lenShow(h.len)}" aria-label="Hole ${i+1} length in ${u}">`).join('')}
+          <input class="field num" id="len${i}" type="number" inputmode="numeric" min="40" max="800" data-clen="${i}" value="${h.len===''?'':lenShow(h.len)}" aria-label="Hole ${i+1} length in ${u}">
+          <input class="field num" type="number" inputmode="numeric" min="1" max="18" data-csi="${i}" value="${h.si??''}" placeholder="–" aria-label="Hole ${i+1} stroke index">`).join('')}
       </div>
       <span class="muted small" id="ctot">${setupTotals()}</span>
     </div>
@@ -1282,7 +1288,7 @@ function vHole(){
   return `
   <div class="top"><button class="btn ghost" data-act="home">← Rounds</button><span class="muted small">${esc(r.course)}</span>${sample?'<button class="btn ghost small" data-act="talkfrom">Talk it</button>':'<span></span>'}</div>
   <div class="stack">
-    <div class="holehead"><span class="holenum num">${h.n}</span><div style="flex:1"><h2>Par ${par} · ${lenShow(h.len)} ${u}</h2><span class="muted small">Hole ${S.idx+1} of ${N}</span></div><button class="btn ghost small" data-act="edithole">${S.editHole?'Done':'Edit hole'}</button></div>
+    <div class="holehead"><span class="holenum num">${h.n}</span><div style="flex:1"><h2>Par ${par} · ${lenShow(h.len)} ${u}</h2><span class="muted small">Hole ${S.idx+1} of ${N}${h.si?` · Index ${h.si}`:''}</span></div><button class="btn ghost small" data-act="edithole">${S.editHole?'Done':'Edit hole'}</button></div>
     ${S.editHole?`<div class="sec"><div class="holeedit"><span class="small muted">Par</span>${seg('hpar',String(par),[['3','3'],['4','4'],['5','5']])}<label class="small muted" for="hlen">Length</label><input id="hlen" class="field num" type="number" inputmode="numeric" data-hlen="1" value="${lenShow(h.len)}"><span class="muted">${u}</span></div><span class="small muted">Saved to the course for next time too.</span></div>`:''}
     <div class="dots">${r.holes.map((x,i)=>`<button class="dot ${i===S.idx?'cur':''} ${(x.unsure||[]).length?'unsure':''} ${(x.assumed||[]).length?'assumed':''} ${x.score!=null&&i!==S.idx?'done':''}" data-act="goto" data-i="${i}" aria-label="Go to hole ${x.n}">${x.n}</button>`).join('')}</div>
     ${(h.assumed||[]).length?`<div class="assumenote">The dashed parts were filled in for you. Tap the right answer if a guess is off.</div>`:''}
@@ -1571,11 +1577,12 @@ function newSetup(){ S.clubOpen=null; S.clubQ=''; S.setup={name:'',cond:[],date:
 function startRound(){
   const st=S.setup; const name=st.name.trim()||'Unnamed course';
   const h=parseHcp(st.hcp); if(h!=null&&h!==S.hcp){ S.hcp=h; lsSet('sg.hcp',h); }
-  S.round={id:'r'+Date.now(),date:st.date||today(),course:name,hcp:h!=null?h:S.hcp,cond:[...(st.cond||[])],saved:false,holes:st.holes.map((x,i)=>ex(i+1,x.par,Number(x.len)||TYPICAL_LEN[x.par]))};
+  S.round={id:'r'+Date.now(),date:st.date||today(),course:name,hcp:h!=null?h:S.hcp,cond:[...(st.cond||[])],saved:false,holes:st.holes.map((x,i)=>ex(i+1,x.par,Number(x.len)||TYPICAL_LEN[x.par],x.si?{si:Number(x.si)}:{}))};
+  fillSI(S.round.holes,name);
   S.idx=0; S.editHole=false; saveDraft(); saveCourse(name,st.holes,st.courseId);
 }
 async function saveCourse(name,holes,id){
-  const course={id:id||('c'+Date.now()),name,holes:holes.map(h=>({par:Number(h.par),len:Number(h.len)||TYPICAL_LEN[h.par]}))};
+  const course={id:id||('c'+Date.now()),name,holes:holes.map(h=>({par:Number(h.par),len:Number(h.len)||TYPICAL_LEN[h.par],...(h.si?{si:Number(h.si)}:{})}))}; fillSI(course.holes,name);
   const i=S.courses.findIndex(c=>c.id===course.id||c.name.toLowerCase()===name.toLowerCase());
   if(i>=0){ course.id=S.courses[i].id; S.courses[i]=course; } else S.courses.push(course);
   lsSet('sg.courses',S.courses);
@@ -1689,7 +1696,7 @@ document.addEventListener('click',e=>{
     case 'newround': newSetup(); S.view='setup'; window.scrollTo(0,0); break;
     case 'resume': S.view='hole'; break;
     case 'openclub': S.clubOpen=S.clubOpen===val?'__none':val; break;
-    case 'pickcourse': { const c=S.courses[Number(b.dataset.i)]; S.setup.courseId=c.id; S.setup.name=c.name; S.setup.holes=c.holes.map(h=>({par:h.par,len:h.len})); break; }
+    case 'pickcourse': { const c=S.courses[Number(b.dataset.i)]; S.setup.courseId=c.id; S.setup.name=c.name; S.setup.holes=c.holes.map(h=>({par:h.par,len:h.len,si:h.si??null})); fillSI(S.setup.holes,c.name); break; }
     case 'nholes': { const n=Number(val); const hs=S.setup.holes; if(n<hs.length) S.setup.holes=hs.slice(0,n); else while(S.setup.holes.length<n){ const p=PARS9[S.setup.holes.length%9]; S.setup.holes.push({par:p,len:TYPICAL_LEN[p]}); } break; }
     case 'cpar': { const h=S.setup.holes[Number(b.dataset.i)]; const p=Number(val); if(Number(h.len)===TYPICAL_LEN[h.par]) h.len=TYPICAL_LEN[p]; h.par=p; break; }
     case 'startholes': startRound(); S.view='hole'; window.scrollTo(0,0); break;
@@ -1743,6 +1750,7 @@ document.addEventListener('input',e=>{
   if(el.dataset.me){ me.name=el.value; clearTimeout(window.__nm); window.__nm=setTimeout(()=>{ if(sb&&uid){ sb.from('profiles').upsert({id:uid,display_name:me.name}); publishMe(); } },800); return; }
   if(el.id==='talk'){ S.talk=el.value; lsSet('sg.talk',S.talk); return; }
   if(el.dataset.num){ setField(el.dataset.num,el.value); S.scrollTo=null; const st=document.getElementById('strip'); if(!st.hidden) st.innerHTML=vStrip(); return; }
+  if(el.dataset.csi!=null){ const v=parseInt(el.value,10); S.setup.holes[Number(el.dataset.csi)].si=v>=1&&v<=18?v:null; return; }
   if(el.dataset.clen!=null){ S.setup.holes[Number(el.dataset.clen)].len=el.value===''?'':toStore('len',el.value); const t=document.getElementById('ctot'); if(t) t.textContent=setupTotals(); return; }
   if(el.dataset.hlen){ const v=toStore('len',el.value); if(v){ hole().len=v; saveDraft(); saveRoundCourse(); const st=document.getElementById('strip'); if(!st.hidden) st.innerHTML=vStrip(); } return; }
   if(el.dataset.hcp){ const v=parseHcp(el.value); S[el.dataset.hcp]=v; lsSet('sg.'+el.dataset.hcp,v); if(el.dataset.hcp==='hcp') publishMe(); saveProfile(); return; }
