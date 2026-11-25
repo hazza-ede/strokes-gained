@@ -29,7 +29,34 @@ function E(lie,m,base,par){
 }
 // Strokes gained for one hole from its checkpoints. Shots between checkpoints cancel out,
 // so only the hand-over points between categories are needed.
+// Picked up: every shot actually played is charged to its own part of the game, measured
+// to where the ball was when you picked up. The shots never played count as neutral.
+function netDouble(h,hcp){ const s=Math.max(0,Math.round((Number(hcp)||0)/18)); return Number(h.par)+2+s; }
+function pickupSG(h,base){
+  const out={ott:0,app:0,atg:0,putt:0,total:0,nApp:0,ok:false,err:null,pickup:true};
+  if(h.score==null||h.score===''){ out.err='How many shots before you picked up?'; return out; }
+  if(!h.pickLie||h.pickDist==null||h.pickDist===''){ out.err='Add where you picked up'; return out; }
+  const k=Number(h.score), putts=Number(h.putts||0), par=Number(h.par);
+  if(putts>0&&(h.fp==null||h.fp==='')){ out.err='Add your first putt distance'; return out; }
+  const Ep=E(h.pickLie,h.pickDist,base,par), E0=E('tee',h.len,base,par);
+  let ottShots=0, penTee=0, startApp=E0, teeDone=false;
+  if(par>=4&&h.teeLie){ ottShots=h.teePen==='retee'?2:1; penTee=(h.teePen==='drop'||h.teePen==='retee')?1:0; teeDone=true;
+    startApp=h.teeLie==='green'?E('green',h.fp,base):E(h.teeLie,h.teeDist,base); }
+  const nAtg=h.atg?Number(h.atgShots||1):0, penOther=Number(h.penOther||0);
+  const nApp=k-putts-nAtg-ottShots-penTee-penOther; out.nApp=nApp;
+  if(nApp<0){ out.err="The shots don't add up. Check shots taken, putts and short-game shots."; return out; }
+  const Ea=h.atg?E(h.atgLie,h.atgDist,base):null, Eg=putts>0?E('green',h.fp,base):null;
+  // which part of the hole was under way when you picked up
+  const last=putts>0?'putt':h.atg?'atg':(nApp>0||penOther>0)?'app':teeDone?'ott':'app';
+  if(teeDone) out.ott = last==='ott' ? E0-Ep-ottShots-penTee : E0-startApp-ottShots-penTee;
+  if(last==='app') out.app = startApp-Ep-nApp-penOther;
+  else if(nApp>0||penOther>0) out.app = startApp-(Ea!=null?Ea:Eg)-nApp-penOther;
+  if(h.atg) out.atg = last==='atg' ? Ea-Ep-nAtg : Ea-Eg-nAtg;
+  if(putts>0) out.putt = Eg-Ep-putts;
+  out.total=out.ott+out.app+out.atg+out.putt; out.ok=true; return out;
+}
 function holeSG(h,base){
+  if(h.pickup) return pickupSG(h,base);
   const out={ott:0,app:0,atg:0,putt:0,total:0,nApp:0,ok:false,err:null};
   if(h.score==null||h.score===''){ out.err='Pick a score'; return out; }
   const score=Number(h.score), putts=Number(h.putts??0), par=Number(h.par);
@@ -68,7 +95,7 @@ function holeSG(h,base){
 function roundSG(r,base){
   const t={ott:0,app:0,atg:0,putt:0,total:0,holes:0,score:0,par:0,complete:true};
   const per=r.holes.map(h=>holeSG(h,base));
-  per.forEach((s,i)=>{ if(s.ok){ t.ott+=s.ott;t.app+=s.app;t.atg+=s.atg;t.putt+=s.putt;t.total+=s.total;t.holes++;t.score+=Number(r.holes[i].score);t.par+=Number(r.holes[i].par);} else t.complete=false; });
+  per.forEach((s,i)=>{ if(s.ok){ t.ott+=s.ott;t.app+=s.app;t.atg+=s.atg;t.putt+=s.putt;t.total+=s.total;t.holes++;t.score+=r.holes[i].pickup?netDouble(r.holes[i],r.hcp):Number(r.holes[i].score);t.par+=Number(r.holes[i].par);} else t.complete=false; });
   return {t,per};
 }
 /*ENGINE-END*/
