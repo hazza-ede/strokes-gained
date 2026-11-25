@@ -91,7 +91,7 @@ tr.tot td{font-weight:700;border-top:2px solid var(--ink)}
 .mtrack div{height:100%;background:var(--neg);border-radius:4px}
 .insight{border-left:4px solid var(--accent);padding:4px 0 4px 12px}
 .insight.leak{border-left-color:var(--neg)}
-.coursegrid{display:grid;grid-template-columns:40px 1fr 96px;gap:6px 8px;align-items:center}
+.coursegrid{display:grid;grid-template-columns:28px 1fr 80px 66px;gap:6px 8px;align-items:center}
 .coursegrid .seg button{padding:8px 4px}
 .mic{display:inline-flex;align-items:center;gap:8px}
 .mic .dotrec{width:10px;height:10px;border-radius:50%;background:var(--muted)}
@@ -344,3 +344,4 @@ button,a,input,select,textarea,label,[data-act]{touch-action:manipulation}
 .pickcard{font-weight:700;color:#7A5410;background:#FFF8E4;border-radius:999px;padding:3px 10px}
 .sec.pickedup{border-color:#E8D3A0}
 b.pk{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#7A5410;color:#fff;font-size:.68rem}
+.coursegrid input[data-csi]{padding-left:8px;padding-right:4px;text-align:center}
