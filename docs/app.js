@@ -1556,3 +1556,6 @@ if(CONFIGURED&&window.supabase){
 }
 window.addEventListener('online',()=>{ if(uid) loadAll(); });
 if('serviceWorker' in navigator&&location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+// Lock the screen to app-style behaviour: no pinch or double-tap zoom, only scrolling and taps.
+['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+document.addEventListener('touchmove',e=>{ if(e.touches&&e.touches.length>1) e.preventDefault(); },{passive:false});
