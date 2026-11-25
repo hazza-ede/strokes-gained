@@ -44,7 +44,7 @@ const S={
   view:'home', tab:'home',
   mode:lsGet('sg.mode','quick'), putUnit:lsGet('sg.putunit','m'), fullUnit:lsGet('sg.fullunit','m'),
   smart:lsGet('sg.smart',true), clubs:lsGet('sg.clubs',false), assumeOn:lsGet('sg.assumeOn',true),
-  bag:lsGet('sg.bag',{}), goals:lsGet('sg.goals',{sets:[],focus:[]}), plan:lsGet('sg.plan',{mins:45,places:['range','green']}), toughOut:lsGet('sg.toughOut',false), statsWho:'me',
+  bag:lsGet('sg.bag',{}), goals:lsGet('sg.goals',{sets:[],focus:[]}), plan:lsGet('sg.plan',{mins:45,places:['range','green']}), toughOut:lsGet('sg.toughOut',false), statsWho:'me', statsTab:'overview', planSeed:lsGet('sg.planSeed',1),
   hcp:lsGet('sg.hcp',null), goal:lsGet('sg.goal',null),
   base:(b=>['me','goal','0','tour'].includes(b)?b:'me')(lsGet('sg.base','me')),
   rounds:lsGet('sg.rounds',[]), courses:lsGet('sg.courses',[]),
@@ -303,32 +303,87 @@ function goalRows(){
     return {...g,cur,pct,done:cur!=null&&cur>=g.target,focus:S.goals.focus.includes(g.k)}; })};
 }
 const PLACES=[['range','Range'],['green','Putting green'],['short','Chipping and bunker area'],['home','Home']];
-const DRILLS={
-  'putt-short':[{p:['green','home'],t:'Gate drill',how:'Two tees just wider than the ball, a metre out. Roll putts through the gate and into the hole.',score:'Makes out of 30.'},{p:['green'],t:'Clock drill',how:'Six balls round the hole at a metre, then a metre and a half. Miss one and start that ring again.',score:'Longest run of makes.'}],
-  'putt-mid':[{p:['green'],t:'Ladder',how:'Putts from 2, 4 and 6 m. Stay at each distance until you hole 3 of 10, picking a start line every time.',score:'Balls needed to finish the ladder.'},{p:['home'],t:'Start line',how:'Putt along the carpet over a coin 30 cm in front of the ball, aiming at a target 3 m away.',score:'Balls over the coin out of 20.'}],
-  'putt-long':[{p:['green'],t:'Fringe finish',how:'From 10, 15 and 20 m, try to stop every ball between the hole and one putter length past it.',score:'Out of 15.'},{p:['home'],t:'Hallway speed',how:'Putt down the hallway and try to stop the ball within a putter length of the far wall without touching it.',score:'Out of 10.'}],
-  'app-100':[{p:['range'],t:'Wedge clock',how:'Three swing lengths with each wedge, five balls each. Write down every carry to build your wedge chart.',score:'Your chart, saved in your phone.'},{p:['short'],t:'Landing towel',how:'Lay a towel 30–60 m away and land wedges on it with different swing lengths.',score:'Towel hits out of 20.'}],
-  'app-150':[{p:['range'],t:'Call it',how:'Call a target at 110, 130 or 150 m before each ball and change it every shot, like on the course.',score:'Within 10 m, out of 15.'}],
-  'app-200':[{p:['range'],t:'Middle of the green',how:'With your 5 or 6 iron, aim at the biggest target on the range. The goal is the green, not the flag.',score:'Within 15 m, out of 10.'}],
-  'app-200p':[{p:['range'],t:'Layup ladder',how:'Alternate one long club with a layup to your favourite wedge distance and compare where they finish.',score:'Layups inside your wedge window, out of 10.'}],
-  'atg-sand':[{p:['short'],t:'Line drill',how:'Draw a line in the sand and hit the sand on or just behind it, moving forward each swing.',score:'Clean splashes in a row.'}],
-  'atg-rough':[{p:['short'],t:'Landing spot',how:'From the rough, land the ball on a spot a pace onto the green with more loft and let it release.',score:'Inside 2 m, out of 15.'},{p:['home'],t:'Basket chips',how:'Chip foam balls into a laundry basket from 5 m, changing your lie each time.',score:'Out of 20.'}],
-  'atg-fw':[{p:['short'],t:'Bump and run',how:'From the fringe, use an 8 iron, land it just on the green and let it run like a putt.',score:'Inside a metre, out of 15.'},{p:['green'],t:'Putt from the fringe',how:'Putt from just off the green. When you can putt it, putt it.',score:'Inside a metre, out of 10.'}],
-  'ott-pen':[{p:['range'],t:'Safe club',how:'Pick your three tightest holes. Hit the club you would play there at a fairway gate 30 m wide.',score:'Fairways out of 12.'}],
-  'ott-trouble':[{p:['range'],t:'Away from trouble',how:'Picture trouble on your usual miss side and aim so that miss still finishes safe.',score:'Safe shots out of 12.'}],
-  'ott-rough':[{p:['range'],t:'Fairway gates',how:'Pick two targets 30 m apart and alternate drives between them, like a real round.',score:'Fairways out of 14.'}],
-  'ott-fw':[{p:['range','home'],t:'Speed sets',how:'Three sets of five swings at full speed with a driver or alignment stick, resting between sets.',score:'Feel faster each set.'}]
-};
-function practicePlan(){
-  const g=goalRows(); const mins=Number(S.plan.mins)||45, places=S.plan.places||[];
-  let areas=g?g.items.filter(x=>x.focus).map(x=>({k:x.k,title:x.title,w:Math.abs(x.cur!=null?x.cur:x.base)})):[];
+// Drill library. Each drill says which shot losses it fixes (0–1), where it can be done, how long it suits and what kind it is.
+// The plan picks the best mix for the golfer's focus goals, time and places, and the Shuffle button swaps in alternatives.
+const D=(id,t,areas,places,min,max,type,how,score)=>({id,t,areas,places,min,max,type,how,score});
+const DRILL_LIB=[
+  D('gate','Gate drill',{'putt-short':1},['green','home'],5,15,'Technique','Two tees just wider than the ball, a metre out. Roll every putt through the gate and into the hole.','Makes out of 30.'),
+  D('clock','Clock drill',{'putt-short':1},['green'],10,15,'Pressure','Six balls round the hole at a metre, then a metre and a half. Miss one and restart that ring.','Longest run of makes.'),
+  D('fifty','50 in a row',{'putt-short':1},['green'],10,20,'Pressure','Hole 50 putts in a row from a metre. Miss and you start again from zero.','Best run.'),
+  D('coin','Coin start line',{'putt-short':.6,'putt-mid':.6},['green','home'],5,10,'Technique','Place a coin 30 cm in front of the ball on your line. Roll every putt over the coin.','Over the coin, out of 20.'),
+  D('ladder','Ladder',{'putt-mid':1},['green'],10,20,'Skill','Putts from 2, 4 and 6 m. Stay at each distance until you hole 3 of 10, reading every putt.','Balls needed to finish.'),
+  D('circle','Three-metre game',{'putt-mid':1},['green'],10,15,'Game','Ten different 3 m putts around the green, full routine each time. Tour players hole about 4 in 10.','Makes out of 10.'),
+  D('readroll','Read and roll',{'putt-mid':.8,'putt-long':.3},['green'],10,15,'Skill','Pick a breaking 4 m putt. Hit it from above and below the hole and watch how the break changes with speed.','Makes out of 10.'),
+  D('fringe','Fringe finish',{'putt-long':1},['green'],10,20,'Skill','From 10, 15 and 20 m, stop every ball between the hole and one putter length past.','Out of 15.'),
+  D('lag9','Lag nine',{'putt-long':1,'putt-mid':.4},['green'],15,25,'Game','Play nine holes on the practice green, each from 10–20 m. Two putts is par.','Score against 18.'),
+  D('eyes','Eyes-closed lag',{'putt-long':.9},['green'],5,10,'Technique','Hit long putts with your eyes closed and call long or short before you look.','Correct calls out of 10.'),
+  D('hall','Hallway speed',{'putt-long':.7},['home'],5,15,'Skill','Putt down the hallway and stop the ball within a putter length of the far wall without touching it.','Out of 10.'),
+  D('line','Line drill',{'atg-sand':1},['short'],10,15,'Technique','Draw a line in the sand and hit the sand on or just behind it, stepping forward each swing.','Clean splashes in a row.'),
+  D('bunker5','Bunker up-and-down',{'atg-sand':1,'putt-short':.3},['short'],10,20,'Game','Five balls in the bunker, each played out until it is holed.','Total shots, par 15.'),
+  D('spot','Landing spot',{'atg-rough':1,'atg-fw':.4},['short'],10,15,'Skill','Land the ball on a spot a pace onto the green and let it release to the hole.','Inside 2 m, out of 15.'),
+  D('badlie','Worst lie',{'atg-rough':1},['short'],10,15,'Skill','Chip from five deliberately bad lies: down in the rough, on a slope, against the collar.','Inside 2 m, out of 15.'),
+  D('bump','Bump and run',{'atg-fw':1},['short'],10,15,'Skill','Off the fringe with an 8 iron. Land it just on and let it run like a putt.','Inside a metre, out of 15.'),
+  D('fputt','Putt from the fringe',{'atg-fw':.8},['green'],5,10,'Skill','Putt from just off the green. When you can putt it, putt it.','Inside a metre, out of 10.'),
+  D('ud9','Up-and-down nine',{'atg-fw':.7,'atg-rough':.7,'putt-short':.4},['short'],20,30,'Pressure','Drop a ball at nine spots around the green and get each one up and down.','Target 5 of 9.'),
+  D('basket','Basket chips',{'atg-rough':.6,'atg-fw':.6},['home'],5,15,'Skill','Chip foam balls into a laundry basket from 5 m, changing your lie each time.','Out of 20.'),
+  D('chipladder','Chip ladder',{'atg-fw':.8,'atg-rough':.5},['short'],10,15,'Technique','With one club, land balls 3, 6 and 9 paces onto the green by changing only swing length.','Inside a club length, out of 15.'),
+  D('wclock','Wedge clock',{'app-100':1},['range'],15,25,'Technique','Three swing lengths with each wedge, five balls each. Write down every carry.','Your wedge chart, saved in your phone.'),
+  D('towel','Landing towel',{'app-100':.9},['short','range'],10,15,'Skill','Lay a towel 30–60 m away and land wedges on it with different swing lengths.','Towel hits out of 20.'),
+  D('rand3','Random three',{'app-100':1},['range'],10,20,'Pressure','Call 40, 60 or 80 m at random before every ball, never the same twice in a row.','Within 5 m, out of 15.'),
+  D('callit','Call it',{'app-150':1},['range'],10,20,'Game','Call a target at 110, 130 or 150 m before each ball and change it every shot.','Within 10 m, out of 15.'),
+  D('nine','Nine-ball flight',{'app-150':.6,'app-200':.5},['range'],15,20,'Skill','Low, middle and high, each as a draw, straight and fade. Nine balls, nine shots.','Shots that came off, out of 9.'),
+  D('middle','Middle of the green',{'app-200':1,'app-200p':.3},['range'],10,15,'Skill','With a 5 or 6 iron, aim at the biggest target on the range. The green, not the flag.','Within 15 m, out of 10.'),
+  D('playcourse','Play Glenelg on the range',{'app-150':.6,'app-200':.6,'ott-rough':.6},['range'],25,40,'Game','Play the first nine on the range: tee club to a fairway, then the approach club to a green-sized target.','Fairways and greens out of 9 each.'),
+  D('layup','Layup ladder',{'app-200p':1},['range'],10,15,'Skill','Alternate one long club with a layup to your favourite wedge distance and compare where they finish.','Layups inside your wedge window, out of 10.'),
+  D('hyb','Hybrid vs long iron',{'app-200':.7,'app-200p':.8},['range'],10,20,'Skill','Ten balls each at a 200 m target. Keep the club that finishes closer more often.','Within 20 m, out of 10 each.'),
+  D('gates','Fairway gates',{'ott-rough':1,'ott-trouble':.5},['range'],10,20,'Game','Pick two targets 30 m apart and alternate drives between them, like a real round.','Fairways out of 14.'),
+  D('safe','Safe club',{'ott-pen':1,'ott-trouble':.6},['range'],10,15,'Skill','Picture your three tightest holes. Hit the club you would play there at a 30 m gate.','Fairways out of 12.'),
+  D('missside','Pick your miss side',{'ott-trouble':1,'ott-pen':.6},['range'],10,15,'Skill','Picture trouble on your usual miss side and aim so that miss still finishes safe.','Safe shots out of 12.'),
+  D('tee3','Name it tee test',{'ott-rough':.7,'ott-pen':.7},['range'],10,15,'Pressure','Before each drive, say the target, shape and club out loud, then commit.','Fairway 2, rough 1, trouble 0. Out of 20.'),
+  D('speed','Speed sets',{'ott-fw':1},['range','home'],10,15,'Technique','Three sets of five swings at full speed with a driver or alignment stick, resting between sets.','Feel faster each set.'),
+  D('strike','Strike check',{'ott-fw':.6,'ott-rough':.5},['range'],10,15,'Technique','Spray foot powder on the driver face and hit ten. Find the centre and keep it there.','Centre strikes out of 10.')
+];
+const WARMUPS={range:'Wedges up to driver, a few balls each, easy tempo.',green:'Short putts first, then a few long ones to feel the speed.',short:'A few easy chips and pitches to wake the hands up.',home:'Some easy swings and short putts on the carpet.'};
+function rng(seed){ let x=seed*9301+49297; return ()=>{ x=(x*9301+49297)%233280; return x/233280; }; }
+function focusAreas(){
+  const g=goalRows();
+  let areas=g?g.items.filter(x=>x.focus).map(x=>({k:x.k,title:x.title,w:Math.abs(x.cur!=null?x.cur:x.base)||0.3})):[];
   if(!areas.length){ const rs=realRounds(); areas=needleMovers(rs.length?chrono(rs).slice(-6):[EXAMPLE_ROUND]).list.slice(0,3).map(x=>({k:x.k,title:x.title,w:Math.abs(x.v)})); }
-  const warm=mins>=30?5:0, left=mins-warm, missing=[];
-  let items=areas.map(a=>{ const d=(DRILLS[a.k]||[]).find(x=>x.p.some(pl=>places.includes(pl))); if(!d) missing.push(a); return d?{...a,d}:null; }).filter(Boolean);
-  const tw=items.reduce((t,x)=>t+x.w,0)||1;
-  items=items.map(x=>({...x,m:Math.max(5,Math.round(left*x.w/tw/5)*5)}));
-  let over=items.reduce((t,x)=>t+x.m,0)-left; items.sort((a,b)=>b.m-a.m); for(const x of items){ while(over>0&&x.m>5){ x.m-=5; over-=5; } } if(over<0&&items[0]) items[0].m-=over;
-  return {warm,items,missing,mins};
+  return areas;
+}
+function practicePlan(){
+  const mins=Number(S.plan.mins)||45, places=S.plan.places||[], areas=focusAreas(), rand=rng(S.planSeed||1);
+  const warmAt=places.find(p=>WARMUPS[p]), warm=warmAt&&mins>=30?(mins>=75?10:5):0;
+  const budget=mins-warm, tw=areas.reduce((t,a)=>t+a.w,0)||1, W={}, target={}, got={};
+  areas.forEach(a=>{ W[a.k]=a.w; target[a.k]=budget*a.w/tw; got[a.k]=0; });
+  const pool=DRILL_LIB.filter(d=>d.places.some(p=>places.includes(p)));
+  const picked=[]; let left=budget;
+  const choose=(k,prefer)=>{ let best=null;
+    for(const d of pool){ if(picked.some(x=>x.d.id===d.id)||d.min>left||(d.areas[k]||0)<0.5) continue;
+      let sc=0; for(const a in d.areas) sc+=(W[a]||0)*d.areas[a];
+      if(prefer&&prefer.includes(d.type)) sc*=1.5; sc*=0.7+0.6*rand();
+      if(!best||sc>best.sc) best={d,sc}; }
+    return best&&best.d; };
+  const add=(d,k)=>{ picked.push({d,m:d.min,k}); left-=d.min; got[k]+=d.min; };
+  // One drill for each focus area first, biggest shot loss first.
+  [...areas].sort((x,y)=>y.w-x.w).forEach(a=>{ const d=choose(a.k); if(d) add(d,a.k); });
+  // Then share the rest of the time by how many shots each area costs: lengthen a drill, or add a game or pressure test.
+  const done=new Set(); let guard=0;
+  while(left>=5&&guard++<60){
+    const live=areas.filter(a=>!done.has(a.k)&&picked.some(x=>x.k===a.k)).sort((x,y)=>(target[y.k]-got[y.k])-(target[x.k]-got[x.k]));
+    if(!live.length) break;
+    const k=live[0].k, mine=picked.filter(x=>x.k===k), deficit=target[k]-got[k];
+    const grow=mine.filter(x=>x.m<x.d.max).sort((a,b)=>a.m-b.m)[0];
+    const fresh=(deficit>=10||!grow)?choose(k,['Game','Pressure']):null;
+    if(fresh){ add(fresh,k); continue; }
+    if(grow){ grow.m+=5; left-=5; got[k]+=5; continue; }
+    done.add(k);
+  }
+  const order={Technique:0,Skill:1,Game:2,Pressure:3};
+  picked.sort((a,b)=>order[a.d.type]-order[b.d.type]);
+  picked.forEach(x=>x.fixes=Object.keys(x.d.areas).filter(k=>W[k]&&x.d.areas[k]>=0.5).map(k=>areas.find(a=>a.k===k).title));
+  const covered=new Set(picked.map(x=>x.k));
+  return {warm,warmText:warm?WARMUPS[warmAt]:'',items:picked,missing:areas.filter(a=>!covered.has(a.k)),mins,spare:left,areas};
 }
 function bounceBack(rounds){
   let blow=0, ok=0, bird=0, bogeys=0, spiral=0;
@@ -404,7 +459,7 @@ const ICONS={
 function render(){
   const app=document.getElementById('app'), strip=document.getElementById('strip'), tabs=document.getElementById('tabs');
   const tabViews=['home','stats','improve','mygolf'], TABL={home:'Rounds',stats:'Stats',improve:'Improve',mygolf:'My golf'};
-  if(S.view==='learn') S.view='improve'; if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='stats'; S.statsWho='mates'; }
+  if(S.view==='learn') S.view='improve'; if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='stats'; S.statsTab='mates'; }
   strip.hidden=S.view!=='hole'; tabs.hidden=!tabViews.includes(S.view);
   document.body.classList.toggle('holeview',S.view==='hole');
   const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,auth:vAuth,setup:vSetup,hole:vHole,talk:vTalk,results:vResults,share:vShare}[S.view];
@@ -422,6 +477,9 @@ function bars(v){
   return `<div class="bars">${CATS.map(([k,l])=>{ const w=Math.min(50,Math.abs(v[k])/max*50); const pos=v[k]>=0;
     return `<div class="bar"><span class="small">${l}</span><div class="track"><div class="fill" style="${pos?'left:50%':'right:50%'};width:${w}%;background:var(--${pos?'pos':'neg'})"></div></div><span class="val ${cls(v[k])}">${f1(v[k])}</span></div>`; }).join('')}</div>`;
 }
+// Section heading: a heavy rule and big title so each part of a tab stands on its own.
+const secHead=(title,sub,right,first)=>`<div class="sechead${first?' first':''}"><div><h2>${title}</h2>${sub?`<p>${sub}</p>`:''}</div>${right||''}</div>`;
+const subTabs=(act,cur,opts)=>`<div class="subtabs" role="tablist">${opts.map(([k,l])=>`<button role="tab" aria-selected="${cur===k}" class="${cur===k?'on':''}" data-act="${act}" data-val="${k}">${l}</button>`).join('')}</div>`;
 const sampleTag=on=>on?'<span class="tag">Sample data</span>':'';
 
 // ----- home -----
@@ -438,14 +496,14 @@ function vHome(){
     <div class="small muted">Handicap <b class="num">${S.hcp!=null?esc(fmtHcp(S.hcp)):'not set'}</b> · Goal <b class="num">${esc(fmtHcp(goalHcp()))}</b> · <button class="linkbtn" data-act="tab" data-val="mygolf">Change</button></div>
     ${draft?`<button class="btn big primary" data-act="resume">Resume round · ${esc(S.round.course)} · hole ${S.idx+1}</button>`:''}
     <button class="btn big ${draft?'':'primary'}" data-act="newround">Start a new round</button>
+    ${secHead('Your game',real.length?`Average of your ${real.length} round${real.length>1?'s':''}`:'An example round until you save your own',sampleTag(!real.length))}
     <div class="card stack">
-      <div class="row between"><h2>${real.length?`Average of ${real.length} round${real.length>1?'s':''}`:'Example round'}</h2>${sampleTag(!real.length)}</div>
       <div class="small muted">Compared with ${esc(baseText(S.base,real.length?null:EXAMPLE_ROUND))}${S.base==='me'&&real.length?' (each round uses the handicap you had that day)':''}</div>
       ${baseChips(null)}
       ${bars(avg)}
       <div class="row between"><span class="muted">Total strokes gained per round</span><b class="bigsg ${cls(avg.total)}" style="font-size:2rem">${f1(avg.total)}</b></div>
     </div>
-    <h3>Rounds</h3>
+    ${secHead('Rounds','Tap a round for the full breakdown')}
     <div class="stack">${allRounds().map(r=>{ const {t}=rsg(r,S.base); return `<button class="roundrow" data-act="open" data-id="${esc(r.id)}"><span><b>${esc(r.course)}</b>${r.example?' <span class="tag">Example</span>':''}${r.demo?' <span class="tag">Sample</span>':''}${condTags(r)}<br><span class="small muted">${fmtDate(r.date)} · ${r.holes.length} holes · shot ${t.score}</span></span><span class="bigsg ${cls(t.total)}" style="font-size:1.6rem">${f1(t.total)}</span></button>`; }).join('')}</div>
   </div>`;
 }
@@ -467,66 +525,68 @@ function vPath(rounds,isExample){
 }
 
 // ----- stats -----
-function extrasHtml(rs){
-  const bb=bounceBack(rs), A=achievements(), fs=funStats(), got=A.list.filter(a=>a.when);
-  const pct=bb.blow?Math.round(bb.ok/bb.blow*100):null;
-  return `<div class="card stack">
-      <h2>Bounce-back</h2>
-      ${bb.blow?`<div class="row between"><span>After a double or worse, you made ${myHcp(null)>18?'double':'bogey'} or better next hole</span><b class="bigsg ${pct>=60?'pos':pct<40?'neg':''}" style="font-size:2rem">${pct}%</b></div>
-      <span class="small muted">${bb.ok} of ${bb.blow} times. ${bb.spiral?`${bb.spiral} time${bb.spiral>1?'s':''} one big number turned into another.`:'No blow-up has turned into two yet.'}${bb.bird?` ${bb.bird} bounce-back birdie${bb.bird>1?'s':''}.`:''}</span>`:`<span class="muted">No doubles yet, so nothing to bounce back from.</span>`}
-    </div>
-    <div class="card stack">
-      <div class="row between"><h2>Achievements</h2><span class="small muted">${got.length} of ${A.list.length}</span></div>
-      <div class="badges">${A.list.map(a=>`<div class="badge ${a.when?'on':''}"><b>${esc(a.t)}</b><span class="small muted">${esc(a.d)}</span><span class="small ${a.when?'pos':'muted'}">${a.when?(a.when==='done'?'Earned':'Earned '+esc(shortDate(a.when))):esc(a.prog||'Not yet')}</span></div>`).join('')}</div>
-    </div>
-    ${fs.length?`<div class="card stack"><h2>Fun stats</h2><div class="tiles">${fs.map(([l,v,sub])=>`<div class="tile"><span>${l}</span><b>${v}</b><span>${sub}</span></div>`).join('')}</div></div>`:''}`;
+const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['detail','Deep dive'],['badges','Badges'],['mates','Mates']]);
+const whoSeg=statsTabs;
+function bounceHtml(rs){
+  const bb=bounceBack(rs), pct=bb.blow?Math.round(bb.ok/bb.blow*100):null;
+  return `<div class="card stack">${bb.blow?`<div class="row between" style="flex-wrap:nowrap"><span>After a double or worse, you made ${myHcp(null)>18?'double':'bogey'} or better on the next hole</span><b class="bigsg ${pct>=60?'pos':pct<40?'neg':''}" style="font-size:2.4rem">${pct}%</b></div>
+      <span class="small muted">${bb.ok} of ${bb.blow} times. ${bb.spiral?`${bb.spiral} time${bb.spiral>1?'s':''} one big number turned into another.`:'No blow-up has turned into two yet.'}${bb.bird?` ${bb.bird} bounce-back birdie${bb.bird>1?'s':''}.`:''}</span>`:`<span class="muted">No doubles yet, so nothing to bounce back from.</span>`}</div>`;
 }
-const whoSeg=()=>seg('statswho',S.statsWho,[['me','Me'],['mates','Mates']]);
+function badgesHtml(){
+  const A=achievements(), fs=funStats(), got=A.list.filter(a=>a.when);
+  return `${secHead('Achievements',`${got.length} of ${A.list.length} earned`,'',true)}
+    <div class="badges">${A.list.map(a=>`<div class="badge ${a.when?'on':''}"><b>${esc(a.t)}</b><span class="small muted">${esc(a.d)}</span><span class="small ${a.when?'pos':'muted'}">${a.when?(a.when==='done'?'Earned':'Earned '+esc(shortDate(a.when))):esc(a.prog||'Not yet')}</span></div>`).join('')}</div>
+    ${fs.length?`${secHead('Fun stats','The numbers worth bragging (or groaning) about')}<div class="tiles">${fs.map(([l,v,sub])=>`<div class="tile"><span>${l}</span><b>${v}</b><span>${sub}</span></div>`).join('')}</div>`:''}`;
+}
 const condTags=r=>(r.cond||[]).map(c=>` <span class="tag soft">${esc((CONDS.find(x=>x[0]===c)||[,c])[1])}</span>`).join('');
 function vStats(){
-  if(S.statsWho==='mates') return vMates();
+  if(S.statsTab==='mates') return vMates();
   const real=statRounds(), anyCond=realRounds().some(r=>(r.cond||[]).length), rs=real.length?chrono(real):[EXAMPLE_ROUND], ex=!real.length;
+  const top=`<div class="top"><span class="brand">Stats</span>${sampleTag(ex)}</div>${statsTabs()}`;
+  const tough=anyCond?`<div class="card"><div class="setrow"><div>Leave out windy, wet or cold rounds<div class="small muted">So tough days don't drag your numbers down.</div></div><button class="switch ${S.toughOut?'on':''}" data-act="toggle" data-val="toughOut" aria-label="Leave out tough-condition rounds" aria-pressed="${S.toughOut}"></button></div></div>`:'';
+  if(S.statsTab==='badges') return `${top}<div class="stack">${ex?`<div class="card muted">Badges and fun stats start once you've saved a round.</div>`:badgesHtml()}</div>`;
   const base=fixedBase();
-  const sg=rs.map(r=>roundSG(r,base).t);
-  const per18=(t,k)=>t.holes?t[k]*18/t.holes:0;
-  const labels=rs.map(r=>shortDate(r.date));
-  const hc=rs.filter(r=>r.hcp!=null);
-  const courses=[...new Set(rs.map(r=>r.course))];
-  const course=courses.includes(S.statsCourse)?S.statsCourse:courses[0];
-  const hh=holeHistory(rs,course,base);
-  const costly=[...hh.holes].sort((a,b)=>a.total-b.total).slice(0,3).filter(h=>h.total<-0.15);
-  const catName={ott:'tee shots',app:'approaches',atg:'chips and bunker shots',putt:'putting'};
-  const cs=clubStats(rs,base), clubKeys=CLUBS.filter(([k])=>cs[k]);
-  return `
-  <div class="top"><span class="brand">Stats</span>${sampleTag(ex)}</div>
-  <div class="stack">
-    ${whoSeg()}
-    ${anyCond?`<div class="card"><div class="setrow"><div>Leave out windy, wet or cold rounds<div class="small muted">So tough days don't drag your numbers down.</div></div><button class="switch ${S.toughOut?'on':''}" data-act="toggle" data-val="toughOut" aria-label="Leave out tough-condition rounds" aria-pressed="${S.toughOut}"></button></div></div>`:''}
+  if(S.statsTab==='detail'){
+    const courses=[...new Set(rs.map(r=>r.course))];
+    const course=courses.includes(S.statsCourse)?S.statsCourse:courses[0];
+    const hh=holeHistory(rs,course,base);
+    const costly=[...hh.holes].sort((a,b)=>a.total-b.total).slice(0,3).filter(h=>h.total<-0.15);
+    const catName={ott:'tee shots',app:'approaches',atg:'chips and bunker shots',putt:'putting'};
+    const cs=clubStats(rs,base), clubKeys=CLUBS.filter(([k])=>cs[k]);
+    return `${top}<div class="stack">
+    ${secHead(`Path to ${esc(fmtHcp(goalHcp()))}`,'Where the shots between you and your goal are going','',true)}
+    ${vPath(rs,ex)}
+    ${secHead('Hole by hole',`${esc(course)} · ${hh.rounds} round${hh.rounds>1?'s':''}`)}
     <div class="card stack">
-      <h2>Progress</h2>
-      <span class="small muted">Strokes gained per 18 holes vs ${esc(S.base==='me'?`your current ${fmtHcp(myHcp(null))} handicap`:baseText(S.base,null))}. The green line is your 3-round average.</span>
-      ${baseChips(null)}
-      ${rs.length>=2?lineChart(sg.map(t=>per18(t,'total')),labels,{rolling:true,aria:'Total strokes gained by round'}):`<div class="flagnote">Your progress chart appears once you've saved 2 rounds.</div>`}
-      ${rs.length>=2?`<div class="sparks">${CATS.map(([k,l])=>{ const vals=sg.map(t=>per18(t,k)); const last3=vals.slice(-3).reduce((a,b)=>a+b,0)/Math.min(3,vals.length); return `<div class="spark"><div class="row"><span class="small">${l}</span><b class="num ${cls(last3)}">${f1(last3)}</b></div>${spark(vals)}<span class="small muted">last 3 avg</span></div>`; }).join('')}</div>`:''}
-      ${hc.length>=2?`<h3 style="margin-top:6px">Handicap</h3>${lineChart(hc.map(r=>r.hcp),hc.map(r=>shortDate(r.date)),{plain:true,invert:true,h:120,fmt:v=>fmtHcp(v),aria:'Handicap by round'})}<span class="small muted">Lower is better, so the line climbs as you improve.</span>`:''}
-    </div>
-    <div class="card stack">
-      <h2>The usual stats</h2>
-      <span class="small muted">${real.length?`Across ${rs.length} round${rs.length>1?'s':''}`:'From the example round'}</span>
-      ${tilesHtml(famStats(rs),false)}
-    </div>
-    ${ex?'':extrasHtml(rs)}
-    <div class="card stack">
-      <h2>Hole by hole</h2>
-      ${courses.length>1?`<div class="chips wide">${courses.map(c=>`<button class="chip ${c===course?'on':''}" data-act="statscourse" data-val="${esc(c)}">${esc(c)}</button>`).join('')}</div>`:`<span class="small muted">${esc(course)} · ${hh.rounds} round${hh.rounds>1?'s':''}</span>`}
+      ${courses.length>1?`<div class="chips wide">${courses.map(c=>`<button class="chip ${c===course?'on':''}" data-act="statscourse" data-val="${esc(c)}">${esc(c)}</button>`).join('')}</div>`:''}
       ${costly.length?costly.map(h=>{ const w=CATS.map(([k])=>[k,h[k]]).sort((a,b)=>a[1]-b[1])[0]; return `<div class="insight leak"><b>The ${ordinal(h.n)} costs you ${Math.abs(h.total).toFixed(1)} a round</b><div class="muted">Mostly ${catName[w[0]]} (${f1(w[1])}). Averaging ${h.score.toFixed(1)} on a par ${h.par}.</div></div>`; }).join(''):`<span class="muted">No hole stands out as costly yet.</span>`}
       <div class="tbl"><table><thead><tr><th>Hole</th><th>Par</th><th>Avg</th><th>Tee</th><th>Appr</th><th>Short</th><th>Putt</th><th>Total</th></tr></thead><tbody>
       ${hh.holes.map(h=>`<tr><td>${h.n}</td><td>${h.par}</td><td>${h.score.toFixed(1)}</td>${Number(h.par)>=4?`<td class="${cls(h.ott)}">${f1(h.ott)}</td>`:'<td class="muted">·</td>'}<td class="${cls(h.app)}">${f1(h.app)}</td><td class="${cls(h.atg)}">${f1(h.atg)}</td><td class="${cls(h.putt)}">${f1(h.putt)}</td><td class="${cls(h.total)}"><b>${f1(h.total)}</b></td></tr>`).join('')}
       </tbody></table></div>
     </div>
-    ${clubKeys.length?`<div class="card stack"><h2>Off the tee by club</h2><div class="tbl"><table><thead><tr><th>Club</th><th>Shots</th><th>Fairway</th><th>Avg length</th><th>Penalties</th><th>SG / shot</th></tr></thead><tbody>
+    ${ex?'':`${secHead('Bounce-back','How you recover after a big number')}${bounceHtml(rs)}`}
+    ${clubKeys.length?`${secHead('Off the tee by club','')}<div class="card stack"><div class="tbl"><table><thead><tr><th>Club</th><th>Shots</th><th>Fairway</th><th>Avg length</th><th>Penalties</th><th>SG / shot</th></tr></thead><tbody>
       ${clubKeys.map(([k,l])=>{ const o=cs[k]; const sgs=o.sg/o.n; return `<tr><td>${l}</td><td>${o.n}</td><td>${Math.round(o.fw/o.n*100)}%</td><td>${lenShow(o.dist/o.n)} ${fullU()}</td><td>${o.pen}</td><td class="${cls(sgs)}">${f2(sgs)}</td></tr>`; }).join('')}
-      </tbody></table></div><span class="small muted">Average length is worked out from the hole length minus the distance left.</span></div>`:(S.clubs?`<div class="card small muted">Club stats appear here once you've logged tee clubs.</div>`:'')}
+      </tbody></table></div><span class="small muted">Average length is worked out from the hole length minus the distance left.</span></div>`:''}
+    </div>`;
+  }
+  const sg=rs.map(r=>roundSG(r,base).t);
+  const per18=(t,k)=>t.holes?t[k]*18/t.holes:0;
+  const labels=rs.map(r=>shortDate(r.date));
+  const hc=rs.filter(r=>r.hcp!=null);
+  return `${top}<div class="stack">
+    ${secHead('Progress',`Strokes gained per 18 holes vs ${esc(S.base==='me'?`your current ${fmtHcp(myHcp(null))} handicap`:baseText(S.base,null))}`,'',true)}
+    ${tough}
+    <div class="card stack">
+      ${baseChips(null)}
+      ${rs.length>=2?lineChart(sg.map(t=>per18(t,'total')),labels,{rolling:true,aria:'Total strokes gained by round'}):`<div class="flagnote">Your progress chart appears once you've saved 2 rounds.</div>`}
+      <span class="small muted">The green line is your 3-round average.</span>
+      ${rs.length>=2?`<div class="sparks">${CATS.map(([k,l])=>{ const vals=sg.map(t=>per18(t,k)); const last3=vals.slice(-3).reduce((a,b)=>a+b,0)/Math.min(3,vals.length); return `<div class="spark"><div class="row"><span class="small">${l}</span><b class="num ${cls(last3)}">${f1(last3)}</b></div>${spark(vals)}<span class="small muted">last 3 avg</span></div>`; }).join('')}</div>`:''}
+    </div>
+    ${hc.length>=2?`${secHead('Handicap','Lower is better, so the line climbs as you improve')}<div class="card">${lineChart(hc.map(r=>r.hcp),hc.map(r=>shortDate(r.date)),{plain:true,invert:true,h:120,fmt:v=>fmtHcp(v),aria:'Handicap by round'})}</div>`:''}
+    ${secHead('The usual stats',real.length?`Across ${rs.length} round${rs.length>1?'s':''}`:'From the example round')}
+    ${tilesHtml(famStats(rs),false)}
+    <button class="btn big" data-act="statstab" data-val="detail">Deep dive: path to goal, hole by hole, bounce-back →</button>
   </div>`;
 }
 const ordinal=n=>n+(n%100>=11&&n%100<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th'));
@@ -634,7 +694,7 @@ const LESSONS=[{title:'Where should you miss?',sub:'Smart misses · Lesson 1 · 
 let imgCaps=null;
 function goalsHtml(){
   ensureGoals(); const g=goalRows(), n=realRounds().length;
-  if(!g) return `<div class="card stack"><h2>Your goals</h2><p class="muted" style="margin:0">Save ${GOAL_EVERY-n} more round${GOAL_EVERY-n===1?'':'s'} and the app will suggest your first goals from where you're losing the most shots.</p></div>`;
+  if(!g) return `${secHead('Your goals','',  '',true)}<div class="card stack"><p class="muted" style="margin:0">Save ${GOAL_EVERY-n} more round${GOAL_EVERY-n===1?'':'s'} and the app will suggest your first goals from where you're losing the most shots.</p></div>`;
   const next=GOAL_EVERY-(n-g.set.n);
   const row=x=>`<div class="goal ${x.focus?'focus':''}">
       <div class="row between" style="flex-wrap:nowrap"><b>${esc(x.title)}</b><button class="chip ${x.focus?'on':''}" style="flex:0 0 auto;padding:5px 10px" data-act="focusgoal" data-val="${x.k}">${x.focus?'Focusing':'Focus'}</button></div>
@@ -642,26 +702,31 @@ function goalsHtml(){
       <div class="mtrack goaltrack"><div style="width:${Math.round(x.pct*100)}%"></div></div>
       <span class="small ${x.done?'pos':'muted'}">${x.cur==null?'Tracking starts with your next round.':x.done?(x.cur>-0.05?'Done: no shots lost here since this goal was set.':`Done: losing ${Math.abs(x.cur).toFixed(1)} a round since this goal was set.`):`Since this goal was set: losing ${Math.abs(x.cur).toFixed(1)} a round.`}</span>
     </div>`;
-  return `<div class="card stack">
-    <div class="row between"><h2>Your goals</h2><span class="small muted">New goals in ${next} round${next===1?'':'s'}</span></div>
-    <span class="small muted">Picked from your last ${Math.min(6,g.set.n)} rounds against a ${esc(fmtHcp(goalHcp()))} golfer. Choose the ones to focus on and your practice plan follows them.</span>
+  return `${secHead('Your goals',`New set in ${next} round${next===1?'':'s'} · picked from your last ${Math.min(6,g.set.n)} rounds vs a ${esc(fmtHcp(goalHcp()))} golfer`,'',true)}
+  <div class="card stack">
+    <span class="small muted">Tap Focus on the ones you want to work on. Your practice plan is built around them.</span>
     ${g.items.length?g.items.map(row).join(''):'<span class="muted">Nothing is costing you shots against your goal right now. Try a lower goal handicap in My golf.</span>'}
   </div>`;
 }
 function planHtml(){
-  const P=practicePlan();
-  return `<div class="card stack">
-    <h2>Practice plan</h2>
+  const P=practicePlan(), placeName=k=>(PLACES.find(x=>x[0]===k)||[,k])[1];
+  return `${secHead("Today's practice",`Built for your focus: ${P.areas.map(a=>esc(a.title.toLowerCase())).join(', ')||'your biggest losses'}`)}
+  <div class="card stack">
     <span class="small muted">How long have you got?</span>
     <div class="chips">${[20,30,45,60,90].map(m=>`<button class="chip ${Number(S.plan.mins)===m?'on':''}" data-act="planmins" data-val="${m}">${m}<span class="sub">min</span></button>`).join('')}</div>
     <span class="small muted">Where are you practising?</span>
     <div class="chips wide">${PLACES.map(([k,l])=>`<button class="chip ${(S.plan.places||[]).includes(k)?'on':''}" data-act="planplace" data-val="${k}">${l}</button>`).join('')}</div>
-    ${P.items.length?`<ol class="plan">
-      ${P.warm?`<li><div class="row between"><b>Warm up</b><span class="num muted">${P.warm} min</span></div><span class="small muted">Easy swings or short putts until you feel loose.</span></li>`:''}
-      ${P.items.map(x=>`<li><div class="row between" style="flex-wrap:nowrap"><b>${esc(x.d.t)}</b><span class="num muted">${x.m} min</span></div><span class="small"><span class="muted">For ${esc(x.title.toLowerCase())}.</span> ${esc(x.d.how)}</span><span class="small muted">Score it: ${esc(x.d.score)}</span></li>`).join('')}
-    </ol>`:`<div class="flagnote">None of your focus areas can be practised there. Add another place above.</div>`}
-    ${P.missing.length&&P.items.length?`<span class="small muted">Not covered here: ${P.missing.map(x=>esc(x.title.toLowerCase())).join(', ')}. Add another place to include ${P.missing.length>1?'them':'it'}.</span>`:''}
-  </div>`;
+  </div>
+  ${P.items.length?`<div class="card stack plancard">
+    <div class="row between"><div><b class="planmins">${P.mins} min</b><div class="small muted">${P.items.length} drill${P.items.length>1?'s':''}${P.warm?' plus a warm-up':''}${P.spare>=5?` · ${P.spare} min spare to repeat your favourite`:''}</div></div><button class="btn" data-act="planshuffle">Shuffle drills</button></div>
+    <ol class="plan">
+      ${P.warm?`<li><div class="row between"><b>Warm up</b><span class="pill">${P.warm} min</span></div><span class="small muted">${esc(P.warmText)}</span></li>`:''}
+      ${P.items.map(x=>`<li><div class="row between" style="flex-wrap:nowrap"><b>${esc(x.d.t)}</b><span class="pill">${x.m} min</span></div>
+        <div class="row" style="gap:6px"><span class="tag soft">${esc(x.d.type)}</span>${x.fixes.map(f=>`<span class="small muted">${esc(f)}</span>`).join('<span class="small muted">·</span>')}<span class="small muted">· ${esc(x.d.places.filter(p=>(S.plan.places||[]).includes(p)).map(placeName)[0]||'')}</span></div>
+        <span class="small">${esc(x.d.how)}</span><span class="small muted">Score it: ${esc(x.d.score)}</span></li>`).join('')}
+    </ol>
+    ${P.missing.length?`<span class="small muted">Not covered at ${(S.plan.places||[]).map(placeName).join(' or ').toLowerCase()||'these places'}: ${P.missing.map(x=>esc(x.title.toLowerCase())).join(', ')}. Add another place to include ${P.missing.length>1?'them':'it'}.</span>`:''}
+  </div>`:`<div class="flagnote">${(S.plan.places||[]).length?'None of your focus areas can be practised there. Add another place above.':'Pick where you are practising.'}</div>`}`;
 }
 function vImprove(){
   const c=S.cad, r=c.res, real=statRounds();
@@ -670,7 +735,7 @@ function vImprove(){
   <div class="stack">
     ${goalsHtml()}
     ${planHtml()}
-    ${vPath(real.length?real:[EXAMPLE_ROUND],!real.length)}
+    ${secHead('Learn','Short lessons on playing smarter')}
     ${sample?'':'<!--'}<div class="card stack">
       <h2>Where should I miss?</h2>
       <p class="muted" style="margin:0">Take a photo of the shot in front of you. Claude looks at the hazards and tells you where to aim and which side is the safe miss.</p>
@@ -686,7 +751,6 @@ function vImprove(){
       ${c.err?`<div class="err">${esc(c.err)}</div>`:''}
       ${r?vCaddie(r):''}`}
     </div>${sample?'':'-->'}
-    <h3>Lessons</h3>
     ${LESSONS.map(l=>`<a class="roundrow" href="${l.url}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><span><b>${esc(l.title)}</b><br><span class="small muted">${esc(l.sub)}</span><br><span class="small">${esc(l.body)}</span></span><span class="btn primary" style="white-space:nowrap">Watch</span></a>`).join('')}
     <p class="small muted">More lessons are on the way.</p>
   </div>`;
@@ -893,7 +957,9 @@ function vResults(){
       ${bars(t)}
     </div>
     ${recapHtml(r,per)}
+    ${secHead('The usual stats','')}
     ${tilesHtml(famStats([r]),true)}
+    ${secHead('Hole by hole','Strokes gained on every hole')}
     <div class="card tbl"><table>
       <thead><tr><th>Hole</th><th>Par</th><th>Score</th><th>Tee</th><th>Appr</th><th>Short</th><th>Putt</th><th>Total</th></tr></thead>
       <tbody>${r.holes.map((h,i)=>{ const s=per[i]; const c=v=>s.ok?`<td class="${cls(v)}">${f2(v)}</td>`:'<td>–</td>'; return `<tr><td>${h.n}</td><td>${h.par}</td><td>${h.score??'–'}</td>${Number(h.par)>=4?c(s.ott):'<td class="muted">·</td>'}${c(s.app)}${c(s.atg)}${c(s.putt)}${c(s.total)}</tr>`; }).join('')}
@@ -1006,7 +1072,7 @@ document.addEventListener('click',e=>{
   if(a!=='askdemo'&&a!=='cleardemo') S.confirmDemo=false;
   if(S.view==='hole'&&S.round&&['prev','next','goto','finish','home','talkfrom'].includes(a)){ commitAssumptions(hole()); saveDraft(); }
   switch(a){
-    case 'tab': if(val==='stats'&&S.view==='stats') S.statsWho='me'; S.view=val; S.viewing=null; S.saveMsg=''; window.scrollTo(0,0); break;
+    case 'tab': if(val==='stats'&&S.view==='stats') S.statsTab='overview'; S.view=val; S.viewing=null; S.saveMsg=''; window.scrollTo(0,0); break;
     case 'home': S.view='home'; S.viewing=null; S.saveMsg=''; S.editHole=false; window.scrollTo(0,0); break;
     case 'base': S.base=val; lsSet('sg.base',val); break;
     case 'mode': S.mode=val; S.openExact={}; lsSet('sg.mode',val); break;
@@ -1014,11 +1080,12 @@ document.addEventListener('click',e=>{
     case 'fullunit': S.fullUnit=val; lsSet('sg.fullunit',val); break;
     case 'toggle': S[val]=!S[val]; lsSet('sg.'+val,S[val]); if(val==='assumeOn') saveProfile(); break;
     case 'focusgoal': { const f=S.goals.focus, i=f.indexOf(val); if(i>=0) f.splice(i,1); else f.push(val); lsSet('sg.goals',S.goals); saveProfile(); break; }
+    case 'planshuffle': S.planSeed=(S.planSeed||1)+1; lsSet('sg.planSeed',S.planSeed); break;
     case 'planmins': S.plan.mins=Number(val); lsSet('sg.plan',S.plan); saveProfile(); break;
     case 'planplace': { const pl=S.plan.places||(S.plan.places=[]), i=pl.indexOf(val); if(i>=0) pl.splice(i,1); else pl.push(val); lsSet('sg.plan',S.plan); saveProfile(); break; }
     case 'cleardemo': { const ids=S.rounds.filter(r=>r.demo).map(r=>r.id); S.rounds=S.rounds.filter(r=>!r.demo); lsSet('sg.rounds',S.rounds); S.goals={sets:[],focus:[]}; lsSet('sg.goals',S.goals); saveProfile(); if(sb&&uid&&ids.length) sb.from('rounds').delete().in('id',ids).then(()=>{},()=>{}); S.confirmDemo=false; break; }
     case 'askdemo': S.confirmDemo=true; break;
-    case 'statswho': S.statsWho=val; if(val==='mates'&&uid&&!S.mates) loadMates(); break;
+    case 'statswho': case 'statstab': S.statsTab=val; if(val==='mates'&&uid&&!S.mates) loadMates(); window.scrollTo(0,0); break;
     case 'scond': { const c=S.setup.cond||(S.setup.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); break; }
     case 'rcond': { const r=S.viewing||S.round; const c=r.cond||(r.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
     case 'fixhole': { if(S.viewing){ S.round=JSON.parse(JSON.stringify(S.viewing)); S.viewing=null; } S.idx=Number(b.dataset.i); S.openExact={}; S.editHole=false; saveDraft(); S.view='hole'; window.scrollTo(0,0); break; }
@@ -1191,9 +1258,9 @@ async function loadAll(){
 }
 async function loadMates(){
   if(!sb||!uid) return;
-  S.matesState='loading'; if(S.view==='stats'&&S.statsWho==='mates') render();
+  S.matesState='loading'; if(S.view==='stats'&&S.statsTab==='mates') render();
   const {data,error}=await sb.from('players').select('user_id,display_name,data');
-  if(error){ S.matesState='slow'; if(S.view==='stats'&&S.statsWho==='mates') render(); return; }
+  if(error){ S.matesState='slow'; if(S.view==='stats'&&S.statsTab==='mates') render(); return; }
   S.mates=(data||[]).map(p=>({...(p.data||{}),_id:p.user_id}));
   (data||[]).forEach(p=>{ S.names[p.user_id]=p.display_name||''; });
   S.sharing=S.mates.some(p=>p._id===uid);
