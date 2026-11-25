@@ -579,37 +579,80 @@ function bounceBack(rounds){
   return {blow,ok,bird,bogeys,spiral};
 }
 function roundFacts(r){
-  const f={score:0,par:0,holes:0,three:0,fw:0,gir:0,ud:0,pens:0,birdies:0,bogeyFreeRun:0,longMake:0}; let run=0;
+  const f={score:0,par:0,holes:0,three:0,fw:0,gir:0,ud:0,pens:0,birdies:0,bogeyFreeRun:0,longMake:0,putts:0,one:0,dbl:0,trip:0,pars:0,parRun:0,birdRun:0,eagle:0,ace:0,backDbl:0,front:0,back:0,fNine:[0,0],bNine:[0,0]}; let run=0,prun=0,brun=0;
   const sg=roundSG(r,String(myHcp(r)));
   r.holes.forEach((h,i)=>{ if(h.score==null) return; const p=Number(h.par),s=Number(h.score),pu=Number(h.putts||0); f.holes++; f.score+=s; f.par+=p;
     if(pu>=3) f.three++; if(p>=4&&(h.teeLie==='fairway'||h.teeLie==='green')&&(h.teePen||'none')==='none') f.fw++;
     if(pu>0?(s-pu)<=p-2:s<=p-2) f.gir++; if(h.atg&&Number(h.atgShots||1)===1&&pu<=1) f.ud++;
     f.pens+=(h.teePen&&h.teePen!=='none'?1:0)+Number(h.penOther||0); if(s<p) f.birdies++;
     run=s<=p?run+1:0; f.bogeyFreeRun=Math.max(f.bogeyFreeRun,run);
+    f.putts+=pu; if(pu===1) f.one++; if(s-p>=2) f.dbl++; if(s-p>=3) f.trip++; if(s<=p) f.pars++;
+    prun=s<=p?prun+1:0; f.parRun=Math.max(f.parRun,prun); brun=s<p?brun+1:0; f.birdRun=Math.max(f.birdRun,brun);
+    if(s<=p-2) f.eagle++; if(s===1) f.ace++; if(i>=9&&s-p>=2) f.backDbl++;
+    const nine=i<9?f.fNine:f.bNine; nine[0]++; if(s<=p+1) nine[1]++;
     if(pu===1&&Number(h.fp)>f.longMake&&!(h.assumed||[]).includes('fp')) f.longMake=Number(h.fp); });
+  f.bogeyNine=(f.fNine[0]===9&&f.fNine[1]===9)||(f.bNine[0]===9&&f.bNine[1]===9);
   f.sg=sg.t; return f;
 }
-function achievements(){
-  const rs=chrono(realRounds()); const facts=rs.map(r=>({r,f:roundFacts(r)})); const full=facts.filter(x=>x.f.holes>=18);
-  const first=(test)=>{ const x=facts.find(test); return x?x.r.date:null; };
-  let streak=0,best=0; full.forEach(x=>{ streak=x.f.three===0?streak+1:0; best=Math.max(best,streak); });
-  const bb=bounceBack(rs);
-  const low=full.length?Math.min(...full.map(x=>x.f.score-x.f.par)):null;
-  const list=[
-    ['Lag master','A full round without a 3-putt',first(x=>x.f.holes>=18&&x.f.three===0)],
-    ['Steady hands','5 rounds in a row without a 3-putt',best>=5?'done':null,`Best run: ${best} of 5`],
-    ['Birdie hunter','3 birdies in one round',first(x=>x.f.birdies>=3)],
-    ['Bogey-free nine','9 holes in a row at par or better',first(x=>x.f.bogeyFreeRun>=9),`Best run: ${Math.max(0,...facts.map(x=>x.f.bogeyFreeRun))} holes`],
-    ['Fairway finder','10 fairways in a round',first(x=>x.f.fw>=10)],
-    ['Flag hunter','12 greens in regulation in a round',first(x=>x.f.gir>=12)],
-    ['Clean card','A full round with no penalty shots',first(x=>x.f.holes>=18&&x.f.pens===0)],
-    ['Scrambler','3 up-and-downs in one round',first(x=>x.f.ud>=3)],
-    ['Bounce-back birdie','A birdie straight after a bogey or worse',bb.bird?'done':null],
-    ['Beat your number','Gain strokes against your own handicap in a round',first(x=>x.f.holes>=18&&x.f.sg.total>0)],
-    ['All-rounder','Gain strokes in all four parts of the game in one round',first(x=>x.f.holes>=18&&x.f.sg.ott>0&&x.f.sg.app>0&&x.f.sg.atg>0&&x.f.sg.putt>0)],
-    ['Downtown','Hole a putt from over 8 m',first(x=>x.f.longMake>8)]
-  ];
-  return {list:list.map(([t,d,when,prog])=>({t,d,when,prog})),low};
+// ---- achievements: levels follow your handicap ----
+const LEVELS=[{n:1,name:'20+',lo:20,next:'15',nextTxt:'15 handicap'},{n:2,name:'15–20',lo:15,next:'10',nextTxt:'10 handicap'},{n:3,name:'10–15',lo:10,next:'5',nextTxt:'5 handicap'},{n:4,name:'5–10',lo:5,next:'0',nextTxt:'scratch golfer'},{n:5,name:'Under 5',lo:-99,next:'0',nextTxt:'scratch golfer'}];
+const levelOf=h=>LEVELS.find(l=>Number(h)>=l.lo)||LEVELS[4];
+const SG_AREAS=[['ott','Off the tee'],['app','Approach'],['atg','Short game'],['putt','Putting']];
+// [id, area, title, unit, fact, lowerIsBetter, targets Lv1..Lv5]
+const STAT_BADGES=[
+  ['putts','Putting','Tidy putter','putts in a round','putts',1,[32,31,30,29,28]],
+  ['three','Putting','No-drama greens','3-putts in a round','three',1,[2,1,1,0,0]],
+  ['one','Putting','One and done','one-putts in a round','one',0,[4,5,6,7,8]],
+  ['fw','Off the tee','Fairway finder','fairways hit','fw',0,[6,7,8,9,10]],
+  ['pens','Off the tee','Clean sheet','penalty shots','pens',1,[2,1,1,0,0]],
+  ['gir','Approach','Flag hunter','greens in regulation','gir',0,[4,6,8,10,12]],
+  ['ud','Short game','Scrambler','up and downs','ud',0,[2,2,3,3,4]],
+  ['dbl','Scoring','Damage control','doubles or worse','dbl',1,[4,3,2,1,0]]];
+const tgtTxt=(lower,t,unit)=>lower?(t===0?`No ${unit}`:`${t} or fewer ${unit}`):`${t}+ ${unit}`;
+const MILESTONES={
+  1:[['Broke 100','Under 100 strokes',f=>f.score<100],['Broke 95','Under 95 strokes',f=>f.score<95],['Par train','3 pars in a row',f=>f.parRun>=3],['Par express','4 pars in a row',f=>f.parRun>=4],['Six pack','6 pars or better in a round',f=>f.pars>=6],['No big numbers','No triple bogeys or worse',f=>f.trip===0],['Bogey nine','A nine at bogey or better',f=>f.bogeyNine]],
+  2:[['Broke 90','Under 90 strokes',f=>f.score<90],['Par express','4 pars in a row',f=>f.parRun>=4],['Eight is great','8 pars or better in a round',f=>f.pars>=8],['Strong finish','No doubles on the back nine',f=>f.backDbl===0],['First birdie','Make a birdie',f=>f.birdies>=1]],
+  3:[['Broke 85','Under 85 strokes',f=>f.score<85],['Broke 80','Under 80 strokes',f=>f.score<80],['Par streak','5 pars in a row',f=>f.parRun>=5],['Double figures','10 pars or better in a round',f=>f.pars>=10],['Birdie pair','2 birdies in a round',f=>f.birdies>=2],['Bogey-free nine','9 holes in a row at par or better',f=>f.bogeyFreeRun>=9]],
+  4:[['Broke 80','Under 80 strokes',f=>f.score<80],['Broke 75','Under 75 strokes',f=>f.score<75],['Birdie hunter','3 birdies in a round',f=>f.birdies>=3],['Par machine','12 pars or better in a round',f=>f.pars>=12],['Bogey-free nine','9 holes in a row at par or better',f=>f.bogeyFreeRun>=9],['No doubles','A full round without a double',f=>f.dbl===0]],
+  5:[['Level best','Even par or better',f=>f.score<=f.par],['Bogey-free','A full round at par or better on every hole',f=>f.bogeyFreeRun>=18],['Birdie hunter','3 birdies in a round',f=>f.birdies>=3],['Birdie blitz','4+ birdies in a round',f=>f.birdies>=4],['Back to back','2 birdies in a row',f=>f.birdRun>=2],['Hat-trick','3 birdies in a row',f=>f.birdRun>=3],['Fourteen','14 pars or better in a round',f=>f.pars>=14]]};
+function achievements(view){
+  const rs=chrono(countedRounds()); const facts=rs.map(r=>({r,f:roundFacts(r),lv:levelOf(myHcp(r)).n})); const full=facts.filter(x=>x.f.holes>=18);
+  const cur=levelOf(S.hcp!=null?S.hcp:10); const vn=view||cur.n;
+  // stat badges: a level counts once you've reached it, from a round played at that level or better
+  const stats=STAT_BADGES.map(([id,area,t,unit,k,lower,tg])=>{
+    const meets=(v,L)=>lower?v<=tg[L-1]:v>=tg[L-1];
+    const levels=tg.map((x,i)=>{ const L=i+1; const hit=full.find(y=>y.lv>=L&&meets(y.f[k],L)); return {L,target:x,when:hit?hit.r.date:null,locked:L>cur.n}; });
+    const mine=full.filter(y=>y.lv>=cur.n); const vals=mine.map(y=>y.f[k]); const best=vals.length?(lower?Math.min(...vals):Math.max(...vals)):null;
+    const bestR=best==null?null:mine.find(y=>y.f[k]===best);
+    const now=levels[vn-1]; const gap=best==null?null:Math.abs(best-now.target);
+    return {id,area,t,unit,lower,levels,now,best,bestR,gap,desc:tgtTxt(lower,now.target,unit)};
+  });
+  // strokes-gained badges (measured against your own handicap, so they scale on their own)
+  const sgs=full.map(x=>({...x,me:x.f.sg,up:roundSG(x.r,levelOf(myHcp(x.r)).next).t}));
+  const firstWhere=fn=>{ const x=sgs.find(fn); return x?x.r.date:null; };
+  const upAreas=SG_AREAS.map(([k,l])=>{ const x=sgs.find(y=>y.up[k]>=0); return {k,l,when:x?x.r.date:null}; });
+  let fixed=null; for(let i=3;i<sgs.length&&!fixed;i++){ const prev=sgs.slice(i-3,i); const avg=k=>prev.reduce((a,y)=>a+y.me[k],0)/3; const weak=SG_AREAS.map(a=>a[0]).sort((a,b)=>avg(a)-avg(b))[0]; if(sgs[i].me[weak]>0) fixed={when:sgs[i].r.date,area:SG_AREAS.find(a=>a[0]===weak)[1]}; }
+  let cons=null,consBest={n:0,l:''}; SG_AREAS.forEach(([k,l])=>{ let run=0; sgs.forEach(y=>{ run=y.me[k]>0?run+1:0; if(run>consBest.n) consBest={n:run,l}; if(run>=3&&!cons) cons={when:y.r.date,area:l}; }); });
+  const big=SG_AREAS.map(([k,l])=>{ const x=sgs.find(y=>y.me[k]>=2); return x?{when:x.r.date,area:l}:null; }).filter(Boolean).sort((a,b)=>a.when<b.when?-1:1)[0];
+  const pb=SG_AREAS.map(([k,l])=>{ if(!sgs.length) return {k,l,v:null}; const x=sgs.reduce((a,y)=>y.me[k]>a.me[k]?y:a); return {k,l,v:x.me[k],r:x.r}; });
+  const sg=[
+    {id:'up',t:'Punching above',d:`Play a part of your game like a ${cur.nextTxt}`,when:upAreas.filter(a=>a.when).map(a=>a.when).sort()[0]||null,areas:upAreas},
+    {id:'big',t:'Big day',d:'Gain 2+ strokes on your handicap in one area',when:big&&big.when,note:big&&big.area},
+    {id:'fix',t:'Weakness fixed',d:'Gain strokes in your biggest leak from the last 3 rounds',when:fixed&&fixed.when,note:fixed&&fixed.area},
+    {id:'cons',t:'Locked in',d:'Gain strokes in the same area 3 rounds running',when:cons&&cons.when,note:cons?cons.area:(consBest.n?`Best run: ${consBest.n} of 3 (${consBest.l})`:'')},
+    {id:'all',t:'Complete game',d:'Gain strokes in all four areas in one round',when:firstWhere(y=>SG_AREAS.every(([k])=>y.me[k]>0))},
+    {id:'beat',t:'Beat your number',d:'Gain strokes on your handicap over a full round',when:firstWhere(y=>y.me.total>0)}];
+  const ms=(MILESTONES[vn]||[]).map(([t,d,fn])=>{ const x=vn>cur.n?null:full.find(y=>y.lv>=vn&&fn(y.f)); return {t,d,when:x?x.r.date:null}; });
+  const own=new Set(ms.map(x=>x.t)), seen=new Set(own), catchUp=[], along=[];
+  for(let L=cur.n-1;L>=1;L--) (MILESTONES[L]||[]).forEach(([t,d,fn])=>{ if(seen.has(t)) return; seen.add(t); const x=full.find(y=>y.lv>=L&&fn(y.f)); (x?along:catchUp).push({t,d,band:LEVELS[L-1].name,when:x?x.r.date:null}); });
+  const bb=bounceBack(rs); const n=realRounds().length;
+  const every=[
+    {t:'Regular',d:'Log 10 rounds',when:n>=10?'done':null,prog:`${n} of 10`},
+    {t:'Bounce-back',d:'Par or better straight after a double or worse',when:facts.some(x=>x.r.holes.some((h,i)=>{ const nx=x.r.holes[i+1]; return h.score!=null&&nx&&nx.score!=null&&h.score-h.par>=2&&nx.score<=nx.par; }))?'done':null},
+    {t:'Eagle',d:'Two under on a hole',when:(facts.find(x=>x.f.eagle)||{r:{}}).r.date||null},
+    {t:'Hole in one',d:'The big one',when:(facts.find(x=>x.f.ace)||{r:{}}).r.date||null}];
+  const all=[...stats.map(x=>x.now.when),...sg.map(x=>x.when),...ms.map(x=>x.when)];
+  return {cur,vn,stats,sg,pb,ms,every,catchUp,along,earned:all.filter(Boolean).length,total:all.length};
 }
 function funStats(){
   const rs=realRounds(); const out=[]; if(!rs.length) return out;
@@ -653,6 +696,8 @@ function render(){
   let md=document.getElementById('modal'); if(!md){ md=document.createElement('div'); md.id='modal'; document.body.appendChild(md); }
   const dr=S.drillOpen&&drillById(S.drillOpen);
   if(dr){ if(md.dataset.id!==dr.id){ md.innerHTML=drillModalHtml(dr); md.dataset.id=dr.id; document.body.classList.add('noscroll'); startAnim(dr); const c=md.querySelector('.modal button'); if(c) c.focus(); } }
+  else if(S.celebrate){ if(md.dataset.id!=='cele'){ md.innerHTML=celebrateHtml(S.celebrate); md.dataset.id='cele'; document.body.classList.add('noscroll'); } }
+  else if(S.badgeOpen){ const A=achievements(), x=A.stats.find(y=>y.id===S.badgeOpen); if(x&&md.dataset.id!=='b-'+x.id){ md.innerHTML=badgeModalHtml(x,A.cur); md.dataset.id='b-'+x.id; document.body.classList.add('noscroll'); } }
   else if(md.dataset.id){ stopAnim(); md.innerHTML=''; md.dataset.id=''; document.body.classList.remove('noscroll'); }
   if(!tabs.hidden) tabs.innerHTML=`<div class="in">${tabViews.map(t=>`<button class="${S.view===t?'on':''}" data-act="tab" data-val="${t}" aria-label="${t}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[t]}</svg>${TABL[t]}</button>`).join('')}</div>`;
   if(S.scrollTo){ const el=document.getElementById(S.scrollTo); S.scrollTo=null; if(el){ const rm=matchMedia('(prefers-reduced-motion: reduce)').matches; el.scrollIntoView({block:'nearest',behavior:rm?'auto':'smooth'}); } }
@@ -796,10 +841,69 @@ function bounceHtml(rs){
   return `<div class="card stack">${bb.blow?`<div class="row between" style="flex-wrap:nowrap"><span>After a double or worse, you made ${myHcp(null)>18?'double':'bogey'} or better on the next hole</span><b class="bigsg ${pct>=60?'pos':pct<40?'neg':''}" style="font-size:2.4rem">${pct}%</b></div>
       <span class="small muted">${bb.ok} of ${bb.blow} times. ${bb.spiral?`${bb.spiral} time${bb.spiral>1?'s':''} one big number turned into another.`:'No blow-up has turned into two yet.'}${bb.bird?` ${bb.bird} bounce-back birdie${bb.bird>1?'s':''}.`:''}</span>`:`<span class="muted">No doubles yet, so nothing to bounce back from.</span>`}</div>`;
 }
+const earnedTxt=w=>w==='done'?'Earned':'Earned '+esc(shortDate(w));
+function badgeCard(t,d,when,note,extra=''){ return `<div class="badge ${when?'on':''}">${when?'<i class="bk">✓</i>':''}<b>${esc(t)}</b><span class="small muted">${esc(d)}</span>${extra}<span class="small ${when?'pos':'muted'}">${when?earnedTxt(when):'Not yet'}${note?` · ${esc(note)}`:''}</span></div>`; }
+function levelCard(A){
+  const c=A.cur;
+  return `<div class="hero lvhero"><span class="eyebrow">Your badges · ${esc(c.name)} handicap</span>
+    <p class="herofix">${c.n===5?`You're in the lowest band. These targets are built for low single-figure golfers.`:`Targets are set for ${esc(c.name)} handicaps. Next band: under ${c.lo}. Dropping a band usually takes a season or more of steady work, so these are for the good rounds along the way.`}</p>
+    <div class="herostat"><b>${A.earned}</b><span>of ${A.total} badges earned at your handicap${A.catchUp.length?`, plus ${A.catchUp.length} still to tick off from easier bands`:''}.</span></div></div>`;
+}
+function statBadge(x,mode){
+  const lv=x.levels.map(l=>`<i class="${l.when?'on':''} ${l.locked?'lk':''}"></i>`).join('');
+  const prog=mode!=='own'||x.now.when||x.best==null?'':`<div class="bprog"><div style="width:${Math.max(8,Math.min(100,x.lower?(x.now.target+1)/(x.best+1)*100:x.best/x.now.target*100))}%"></div></div><span class="small muted">Your best: ${x.best} · ${x.gap} to go</span>`;
+  const tail=mode==='ahead'?`<span class="small muted">🔒 Locked</span>`:x.now.when?`<span class="small pos">${earnedTxt(x.now.when)}</span>`:mode==='past'?`<span class="small muted">Not earned</span>`:'';
+  return `<button class="badge stat ${x.now.when?'on':''} ${mode==='ahead'?'locked':''}" data-act="badge" data-val="${x.id}">${x.now.when?'<i class="bk">✓</i>':''}<span class="barea">${esc(x.area)}</span><b>${esc(x.t)}</b><span class="small muted">${esc(x.desc)}</span>${prog}${mode==='own'?`<span class="lvdots" aria-label="bands cleared">${lv}</span>`:''}${tail}</button>`;
+}
+function badgeModalHtml(x,cur){
+  return `<div class="modalback" data-act="closebadge"></div><div class="modal" role="dialog" aria-modal="true">
+    <div class="row between" style="flex-wrap:nowrap"><div><span class="barea">${esc(x.area)}</span><h2>${esc(x.t)}</h2></div><button class="btn ghost" data-act="closebadge" aria-label="Close">✕</button></div>
+    <p class="muted" style="margin:0">Your target is set a little better than a typical round at your handicap. Easier targets sit below it.</p>
+    <div class="ladder">${x.levels.filter(l=>l.L<=cur.n).reverse().map(l=>`<div class="rung ${l.L===cur.n?'now':''} ${l.locked?'lk':''} ${l.when?'on':''}"><span class="rl">${esc(LEVELS[l.L-1].name)}<small>handicap</small></span><b>${tgtTxt(x.lower,l.target,x.unit)}</b><span class="rs">${l.when?'✓ '+esc(shortDate(l.when)):l.locked?'Locked':l.L===cur.n?'Your band':''}</span></div>`).join('')}</div>
+    ${x.best!=null?`<div class="card" style="margin:0"><span class="small muted">Your best at your handicap</span><div style="font-size:1.3rem;font-weight:700">${x.best} ${esc(x.unit)}</div><span class="small muted">${x.bestR?esc(shortDate(x.bestR.r.date))+', '+esc(x.bestR.r.course):''}</span></div>`:''}</div>`;
+}
+// ---- celebration after saving a round ----
+function earnedMap(){
+  const A=achievements(), m={};
+  A.stats.forEach(x=>{ if(x.now.when) m['s:'+x.id]={t:x.t,d:x.desc,tag:x.area}; });
+  A.sg.forEach(x=>{ if(x.when) m['g:'+x.id]={t:x.t,d:x.d+(x.note&&!/Best run/.test(x.note)?` (${x.note.toLowerCase()})`:''),tag:'Strokes gained'}; });
+  A.ms.forEach(x=>{ if(x.when) m['m:'+x.t]={t:x.t,d:x.d,tag:'Milestone'}; });
+  A.along.forEach(x=>{ m['m:'+x.t]={t:x.t,d:x.d,tag:'Ticked off · '+x.band+' band'}; });
+  A.every.forEach(x=>{ if(x.when) m['e:'+x.t]={t:x.t,d:x.d,tag:'Any handicap'}; });
+  const near=A.stats.filter(x=>!x.now.when&&x.gap===1).map(x=>({t:x.t,d:x.desc}));
+  return {m,near};
+}
+function celebrateDiff(before,r){
+  const after=earnedMap(); const fresh=Object.keys(after.m).filter(k=>!before.m[k]).map(k=>after.m[k]);
+  if(fresh.length) S.celebrate={items:fresh,near:after.near.slice(0,2),course:r&&r.course,date:r&&r.date};
+}
+const MEDAL='<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M16 4h6l4 12h-6z" fill="#2E7D57"/><path d="M32 4h-6l-4 12h6z" fill="#17804A"/><circle cx="24" cy="29" r="14" fill="#F2C14E"/><circle cx="24" cy="29" r="10.5" fill="none" stroke="#C99520" stroke-width="2"/><path d="M24 22.5l2 4.2 4.6.6-3.3 3.2.8 4.6-4.1-2.2-4.1 2.2.8-4.6-3.3-3.2 4.6-.6z" fill="#fff"/></svg>';
+function celebrateHtml(c){
+  const cols=['#FFD36E','#9BEBB6','#FFFFFF','#F2C14E','#7FD1A8','#FFB3A6'];
+  const bits=Array.from({length:34},(_,i)=>`<i style="left:${(i*29)%100}%;background:${cols[i%6]};animation-delay:${-((i*37)%100)/50}s;animation-duration:${2.2+((i*13)%10)/10}s;transform:rotate(${i*47}deg)"></i>`).join('');
+  const n=c.items.length;
+  return `<div class="modalback" data-act="closecele"></div><div class="modal cele" role="dialog" aria-modal="true" aria-labelledby="celetitle">
+    <div class="celetop"><div class="confetti" aria-hidden="true">${bits}</div><div class="bigmedal">${MEDAL}</div>
+      <h2 id="celetitle">${n===1?'New badge!':`${n} new badges!`}</h2><span class="celesub">${c.course?`From your round at ${esc(c.course.replace(/ –.*$/,''))}${c.date?', '+esc(shortDate(c.date)):''}`:'From your latest round'}</span></div>
+    <div class="celelist">${c.items.map((x,i)=>`<div class="celeitem" style="animation-delay:${.15+i*.12}s"><span class="cm">${MEDAL}</span><div><span class="barea">${esc(x.tag)}</span><b>${esc(x.t)}</b><span class="small muted">${esc(x.d)}</span></div></div>`).join('')}</div>
+    ${c.near&&c.near.length?`<div class="celenear"><b>So close</b>${c.near.map(x=>`<span class="small">${esc(x.t)}: ${esc(x.d.toLowerCase())}. One away.</span>`).join('')}</div>`:''}
+    <div class="row" style="gap:8px;flex-wrap:nowrap"><button class="btn big primary" data-act="closecele" style="flex:1">Done</button><button class="btn ghost" data-act="celebadges">See all badges</button></div></div>`;
+}
 function badgesHtml(){
-  const A=achievements(), fs=funStats(), got=A.list.filter(a=>a.when);
-  return `${secHead('Achievements',`${got.length} of ${A.list.length} earned`,'',true)}
-    <div class="badges">${A.list.map(a=>`<div class="badge ${a.when?'on':''}"><b>${esc(a.t)}</b><span class="small muted">${esc(a.d)}</span><span class="small ${a.when?'pos':'muted'}">${a.when?(a.when==='done'?'Earned':'Earned '+esc(shortDate(a.when))):esc(a.prog||'Not yet')}</span></div>`).join('')}</div>
+  const A=achievements(), fs=funStats(), band=A.cur.name;
+  return `${levelCard(A)}
+    ${secHead('Strokes gained','Measured against your own handicap')}
+    <div class="badges">${A.sg.map(x=>x.id==='up'?badgeCard(x.t,x.d,x.when,'',`<span class="achips">${x.areas.map(a=>`<em class="${a.when?'on':''}">${a.when?'✓ ':''}${esc(a.l)}</em>`).join('')}</span>`):badgeCard(x.t,x.d,x.when,x.note)).join('')}</div>
+    <div class="tiles pbs">${A.pb.map(p=>`<div class="tile"><span>Best ${esc(p.l.toLowerCase())}</span><b class="${p.v>0?'pos':p.v<0?'neg':''}">${p.v==null?'–':gl(p.v)}</b><span>${p.r?esc(shortDate(p.r.date)):''}</span></div>`).join('')}</div>
+    ${secHead(`Targets for ${band} handicaps`,'Tap a badge to see your best and the easier targets you\'ve cleared')}
+    <div class="badges">${A.stats.map(x=>statBadge(x,'own')).join('')}</div>
+    ${secHead(`Milestones for ${band} handicaps`,'')}
+    <div class="badges">${A.ms.map(x=>badgeCard(x.t,x.d,x.when)).join('')}</div>
+    ${A.catchUp.length?`${secHead('Still to tick off','From easier bands. Very doable at your handicap.')}
+    <div class="badges">${A.catchUp.map(x=>badgeCard(x.t,x.d,null,'',`<span class="bfrom">${esc(x.band)} band</span>`)).join('')}</div>`:''}
+    ${A.along.length?`<details class="along"><summary>Earned along the way <b>${A.along.length}</b></summary><div class="badges">${A.along.map(x=>badgeCard(x.t,x.d,x.when,'',`<span class="bfrom">${esc(x.band)} band</span>`)).join('')}</div></details>`:''}
+    ${secHead('Any handicap','')}
+    <div class="badges">${A.every.map(x=>badgeCard(x.t,x.d,x.when,x.when?'':x.prog)).join('')}</div>
     ${fs.length?`${secHead('Fun stats','The numbers worth bragging (or groaning) about')}<div class="tiles">${fs.map(([l,v,sub])=>`<div class="tile"><span>${l}</span><b>${v}</b><span>${sub}</span></div>`).join('')}</div>`:''}`;
 }
 const condTags=r=>(r.cond||[]).map(c=>` <span class="tag soft">${esc((CONDS.find(x=>x[0]===c)||[,c])[1])}</span>`).join('');
@@ -1404,6 +1508,10 @@ document.addEventListener('click',e=>{
     case 'focusgoal': { const f=S.goals.focus, i=f.indexOf(val); if(i>=0) f.splice(i,1); else f.push(val); lsSet('sg.goals',S.goals); saveProfile(); break; }
     case 'drill': S.drillOpen=val; break;
     case 'closedrill': S.drillOpen=null; break;
+    case 'badge': S.badgeOpen=val; break;
+    case 'closecele': S.celebrate=null; break;
+    case 'celebadges': S.celebrate=null; S.view='stats'; S.statsTab='badges'; window.scrollTo(0,0); break;
+    case 'closebadge': S.badgeOpen=null; break;
     case 'planshuffle': S.planSeed=(S.planSeed||1)+1; lsSet('sg.planSeed',S.planSeed); break;
     case 'planextra': { const e=S.plan.extra||(S.plan.extra=[]), i=e.indexOf(val); if(i>=0) e.splice(i,1); else e.push(val); lsSet('sg.plan',S.plan); saveProfile(); break; }
     case 'planmins': S.plan.mins=Number(val); lsSet('sg.plan',S.plan); saveProfile(); break;
@@ -1436,7 +1544,7 @@ document.addEventListener('click',e=>{
     case 'finish': S.round.holes.forEach(h=>commitAssumptions(h)); saveDraft(); S.view='results'; S.viewing=null; window.scrollTo(0,0); break;
     case 'open': { const r=allRounds().find(x=>x.id===b.dataset.id); S.viewing=r; S.view='results'; window.scrollTo(0,0); break; }
     case 'edit': { const r=S.viewing||S.round; S.round=JSON.parse(JSON.stringify(r)); S.viewing=null; S.idx=0; saveDraft(); S.view='hole'; break; }
-    case 'save': { const r=S.round; S.saveMsg='Saving…'; render(); persistRound(r).then(msg=>{ S.round=null; lsSet('sg.draft',null); S.viewing=S.rounds.find(x=>x.id===r.id); S.saveMsg=msg; if(sb&&uid) sb.from('drafts').delete().eq('user_id',uid).then(()=>{},()=>{}); render(); }); return; }
+    case 'save': { const r=S.round, before=earnedMap(); S.saveMsg='Saving…'; render(); persistRound(r).then(msg=>{ celebrateDiff(before,r); S.round=null; lsSet('sg.draft',null); S.viewing=S.rounds.find(x=>x.id===r.id); S.saveMsg=msg; if(sb&&uid) sb.from('drafts').delete().eq('user_id',uid).then(()=>{},()=>{}); render(); }); return; }
     case 'askdel': S.confirmDel=true; break;
     case 'del': { const r=S.viewing||S.round; S.rounds=S.rounds.filter(x=>x.id!==r.id); lsSet('sg.rounds',S.rounds); if(sb&&uid) sb.from('rounds').delete().eq('id',r.id).then(()=>{},()=>{}); if(S.round&&S.round.id===r.id){S.round=null; lsSet('sg.draft',null);} S.viewing=null; S.view='home'; S.confirmDel=false; publishMe(); break; }
     case 'statscourse': S.statsCourse=val; break;
@@ -1474,7 +1582,7 @@ document.addEventListener('input',e=>{
 });
 // Redraw after leaving a box, unless focus moved to a button (that tap redraws anyway).
 document.addEventListener('focusout',e=>{ const d=e.target.dataset||{}; if(d.hcp!=null||d.hlen||d.num||d.bag){ const to=e.relatedTarget; if(!(to&&to.closest&&to.closest('[data-act]'))) render(); } });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.drillOpen){ S.drillOpen=null; render(); return; } if(e.key==='Enter'&&e.target.dataset&&(e.target.dataset.num||e.target.dataset.hcp!=null)) e.target.blur(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&(S.drillOpen||S.badgeOpen||S.celebrate)){ S.drillOpen=null; S.badgeOpen=null; S.celebrate=null; render(); return; } if(e.key==='Enter'&&e.target.dataset&&(e.target.dataset.num||e.target.dataset.hcp!=null)) e.target.blur(); });
 
 async function toggleSharing(){
   if(!sb||!uid) return;
