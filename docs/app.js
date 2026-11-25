@@ -1023,7 +1023,18 @@ function appDisp(rs){
     <text x="${c}" y="${c-r+16}" text-anchor="middle" fill="#fff" font-size="10" font-family="Inter,system-ui" opacity=".85">PAST THE FLAG</text><text x="${c}" y="${c+r-8}" text-anchor="middle" fill="#fff" font-size="10" font-family="Inter,system-ui" opacity=".85">SHORT</text></svg>
     <span class="small" style="color:#fff;opacity:.85;text-align:center">Dots: greens hit, placed by direction and first-putt length. Ring: where you missed.</span></div>
     <div class="dstat"><div><b class="num">${gir}%</b><span>Greens hit</span></div><div><b class="num">${avgFp!=null?`${avgFp.toFixed(isFt()?0:1)} ${puttU()}`:'–'}</b><span>Average first putt on greens hit</span></div><div><b class="${lr&&nS/lr>=.65?'neg':''}">${lr?`${Math.round(nS/lr*100)}% short`:'–'}</b><span>When not pin-high</span></div></div>
-    <div class="card stack" style="gap:6px"><b>What it means</b><span class="small muted">${say}</span><span class="small muted">${pts.length} approach${pts.length===1?'':'es'}.</span></div>`;
+    <div class="card stack" style="gap:6px"><b>What it means</b><span class="small muted">${say}</span><span class="small muted">${pts.length} approach${pts.length===1?'':'es'}.</span></div>
+    ${shortSidedCard(rs)}`;
+}
+// Short-sided misses: how often, and what the chip costs compared with a normal miss.
+function shortSidedCard(rs){
+  const ms=[]; rs.forEach(r=>{ const b=resolveBase('me',r); r.holes.forEach(h=>{ if(!h.appMiss) return; const g=holeSG(h,b); if(g.ok) ms.push({ss:!!h.shortSided,atg:g.atg}); }); });
+  if(ms.length<3) return '';
+  const ss=ms.filter(m=>m.ss), ok=ms.filter(m=>!m.ss), avg=a=>a.length?a.reduce((t,m)=>t+m.atg,0)/a.length:null, a1=avg(ss), a2=avg(ok), pc=Math.round(ss.length/ms.length*100);
+  const tip=!ss.length?'None of your missed greens were short-sided. Nice course management.':pc>=35?`That's a lot. When the flag is tucked, aim for the middle of the green so you miss where there's room.`:a1!=null&&a2!=null&&a1<a2-0.15?`Your short-sided chips cost you more, but your normal chips hold up. That points to where you're missing, not how you chip.`:`Short-siding isn't a big problem for you.`;
+  return `<div class="card stack" style="gap:8px"><b>Short-sided misses</b>
+    <div class="dstat"><div><b class="num ${pc>=35?'neg':''}">${pc}%</b><span>Of missed greens</span></div><div><b class="num ${a1!=null?cls(a1):''}">${a1!=null?f1(a1):'–'}</b><span>Chip strokes gained, short-sided</span></div><div><b class="num ${a2!=null?cls(a2):''}">${a2!=null?f1(a2):'–'}</b><span>Chip strokes gained, normal miss</span></div></div>
+    <span class="small muted">${tip}</span></div>`;
 }
 function vStats(){
   const real=statRounds(), anyCond=realRounds().some(r=>(r.cond||[]).length), rs=real.length?chrono(real):[EXAMPLE_ROUND], ex=!real.length;
@@ -1857,14 +1868,14 @@ function teeTarget(h){
     return `<g class="tz" data-act="teezone" data-val="${k}" role="button" aria-label="${miss?l+' miss':'Fairway'}" aria-pressed="${on}"><rect x="${x0}" y="0" width="${x1-x0}" height="${H}" rx="14" fill="${miss?'#4a7a38':'#86c766'}"/>${on?`<rect x="${x0+3}" y="3" width="${x1-x0-6}" height="${H-6}" rx="12" fill="none" stroke="#0E3B2C" stroke-width="5"/>${tickSvg(cx,H/2+32)}`:''}<text class="tlbl" x="${cx}" y="${H/2-2}" text-anchor="middle">${miss?l.toUpperCase():'FAIRWAY'}</text>${miss?`<text class="tlbl" x="${cx}" y="${H/2+13}" text-anchor="middle" style="font-size:10px;opacity:.85">MISS</text>`:''}</g>`; }).join('')}</svg></div>`;
 }
 function appTarget(h){
-  const S2=320,c=S2/2,R=152,r=90, P=(a,rad)=>[c+rad*Math.cos(a*Math.PI/180),c+rad*Math.sin(a*Math.PI/180)];
+  const S2=320,c=S2/2,R=158,r=104, P=(a,rad)=>[c+rad*Math.cos(a*Math.PI/180),c+rad*Math.sin(a*Math.PI/180)];
   const ring=MISS8.map(([k,l],i)=>{ const a0=-112.5+i*45, a1=a0+45; const [x1,y1]=P(a0,R),[x2,y2]=P(a1,R),[x3,y3]=P(a1,r+6),[x4,y4]=P(a0,r+6),[lx,ly]=P((a0+a1)/2,(R+r)/2+3), on=h.appMiss===k, ls=l.toUpperCase().split(' ');
     return `<g class="tz" data-act="appzone" data-val="m-${k}" role="button" aria-label="Missed ${l.toLowerCase()}" aria-pressed="${on}"><path d="M${x1} ${y1} A${R} ${R} 0 0 1 ${x2} ${y2} L${x3} ${y3} A${r+6} ${r+6} 0 0 0 ${x4} ${y4} Z" fill="#4a7a38" stroke="${on?'#0E3B2C':'#fff'}" stroke-width="${on?5:3}"/>${on?tickSvg(lx,ly):ls.map((t,j)=>`<text class="tlbl" x="${lx}" y="${ly+4+(j-(ls.length-1)/2)*12}" text-anchor="middle">${t}</text>`).join('')}</g>`; }).join('');
   const cell=2*r/3; let grid='', mark='';
   for(let i=0;i<3;i++) for(let j=0;j<3;j++){ const x=c-r+j*cell, y=c-r+i*cell, on=h.appCell===`${i}-${j}`;
     grid+=`<rect class="tz" data-act="appzone" data-val="g-${i}-${j}" role="button" aria-label="On the green, ${CELL_NAMES[i][j].toLowerCase()}" x="${x}" y="${y}" width="${cell}" height="${cell}" fill="transparent" stroke="rgba(255,255,255,.55)" stroke-width="1.5"/>`;
     if(on) mark=`<rect x="${x+3}" y="${y+3}" width="${cell-6}" height="${cell-6}" rx="6" fill="none" stroke="#0E3B2C" stroke-width="4" pointer-events="none"/>${i===1&&j===1?'':`<g pointer-events="none">${tickSvg(x+cell/2,y+cell/2)}</g>`}`; }
-  return `<div class="tgt"><svg viewBox="0 0 ${S2} ${S2}" width="300" height="300" role="group" aria-label="Where the approach finished">${ring}<defs><clipPath id="appclip"><circle cx="${c}" cy="${c}" r="${r}"/></clipPath></defs><circle cx="${c}" cy="${c}" r="${r}" fill="#86c766"/><g clip-path="url(#appclip)">${grid}${mark}</g><circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#fff" stroke-width="2.5" pointer-events="none"/>
+  return `<div class="tgt"><svg viewBox="0 0 ${S2} ${S2}" width="100%" style="max-width:380px;display:block" role="group" aria-label="Where the approach finished">${ring}<defs><clipPath id="appclip"><circle cx="${c}" cy="${c}" r="${r}"/></clipPath></defs><circle cx="${c}" cy="${c}" r="${r}" fill="#86c766"/><g clip-path="url(#appclip)">${grid}${mark}</g><circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#fff" stroke-width="2.5" pointer-events="none"/>
     <g pointer-events="none"><line x1="${c}" y1="${c+6}" x2="${c}" y2="${c-22}" stroke="#fff" stroke-width="2.2"/><path d="M ${c} ${c-22} l 14 5 l -14 5 z" fill="#FFD36E"/><circle cx="${c}" cy="${c+6}" r="3.5" fill="#111"/></g></svg></div>`;
 }
 const teeDone=h=>h.teeLie==='green'||(!!h.teeLie&&h.teeDist!=null);
@@ -1873,28 +1884,42 @@ function teeSummary(h){ const club=(CLUBS.find(c=>c[0]===h.teeClub)||[])[1]; con
 const appDone=h=>Number(h.putts)===0&&!h.atg?!!h.appCell:(h.appCell&&h.fp!=null)||(h.appMiss&&h.atgLie&&h.atgDist!=null&&(h.fp!=null||Number(h.putts)===0));
 function appSummary(h){ const fp=h.fp!=null?`${toShow('fp',h.fp)} ${puttU()} first putt`:Number(h.putts)===0?'holed it':null;
   if(h.appCell){ const [i,j]=h.appCell.split('-').map(Number); return [`On the green · ${CELL_NAMES[i][j].toLowerCase()}`,fp].filter(Boolean).join(' · '); }
-  return [`Missed ${(MISS8.find(m=>m[0]===h.appMiss)||[,''])[1].toLowerCase()}`,(LIES_ATG.find(l=>l[0]===h.atgLie)||[,''])[1],h.atgDist!=null?`${toShow('atgDist',h.atgDist)} ${fullU()}`:null,Number(h.atgShots||1)>1?`${h.atgShots} shots on`:null,fp].filter(Boolean).join(' · '); }
+  return [`Missed ${(MISS8.find(m=>m[0]===h.appMiss)||[,''])[1].toLowerCase()}`,h.shortSided?'short-sided':null,(LIES_ATG.find(l=>l[0]===h.atgLie)||[,''])[1],h.atgDist!=null?`${toShow('atgDist',h.atgDist)} ${fullU()}`:null,Number(h.atgShots||1)>1?`${h.atgShots} shots on`:null,fp].filter(Boolean).join(' · '); }
+// The pop-up asks one question at a time. Answers build up as tags you can tap to go back.
+function sheetSteps(k){ return k==='miss'?['lie','dist','putt']:k==='putt'?['putt']:['tee']; }
 function holeSheet(h){
   const k=S.sheet; if(!k) return '';
-  const fpField=`<div class="row between"><span class="small muted">First putt length</span><span class="small muted">${isFt()?'feet':'metres'}</span></div>${distField('fp',isFt()?PUTT_FT.filter(x=>x>=2&&x<=60):PUTT_M.filter(x=>x>=0.5),isFt()?'ft':'m',toShow('fp',h.fp),'First putt length')}
-    ${k==='miss'&&h.score!=null?`<button class="linkbtn small" style="justify-self:start" data-act="holedout">Holed it from off the green</button>`:''}`;
-  let title='', body='';
-  if(k==='tee'){ title=`Missed ${h.teeSide}`; body=`<span class="small muted">Where was it?</span><div class="chips wide">${[['rough','Rough'],['sand','Bunker'],['recovery','Trees']].map(([v,l])=>`<button class="chip ${h.teeLie===v&&!S.sheetPen&&h.teePen!=='drop'&&h.teePen!=='retee'?'on':''}" data-act="teelie" data-val="${v}">${l}</button>`).join('')}<button class="chip ${S.sheetPen||h.teePen==='drop'||h.teePen==='retee'?'on':''}" data-act="teelie" data-val="pen">Penalty</button></div>
-    ${S.sheetPen||h.teePen==='drop'||h.teePen==='retee'?`<div class="chips wide"><button class="chip ${h.teePen==='drop'?'on':''}" data-act="teepen" data-val="drop">Penalty drop</button><button class="chip ${h.teePen==='retee'?'on':''}" data-act="teepen" data-val="retee">OB, re-teed</button></div>`:''}`; }
-  if(k==='putt'){ const [i,j]=(h.appCell||'1-1').split('-').map(Number); title=`On the green · ${CELL_NAMES[i][j].toLowerCase()}`; body=`${fpField}<span class="small muted">Putts are worked out from your score.</span>`; }
-  if(k==='miss'){ title=`Missed ${(MISS8.find(m=>m[0]===h.appMiss)||[,''])[1].toLowerCase()}`; body=`<span class="small muted">Where was it?</span><div class="chips wide">${[['fairway','Fairway'],['rough','Rough'],['sand','Bunker']].map(([v,l])=>chip('atgLie',v,l,h.atgLie===v)).join('')}</div>
-    <div class="row between"><span class="small muted">Distance to the flag</span><span class="small muted">${isYd()?'yards':'metres'}</span></div>${distField('atgDist',ATG_CH,fullU(),toShow('atgDist',h.atgDist),'Distance to the flag')}
-    <div class="row between"><span class="small muted">Shots to get on the green</span>${stepper('atgShots',h.atgShots||1)}</div>
-    ${fpField}`; }
-  return `<div class="sheetback" data-act="sheetclose"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="grab"></span><div class="shead"><b>${esc(title)}</b><button class="linkbtn small" data-act="sheetchange">Change</button></div><div class="stack" style="gap:10px">${body}</div><button class="btn primary" data-act="sheetclose">Done</button></div>`;
+  const steps=sheetSteps(k), st=Math.min(S.sheetStep||0,steps.length-1), step=steps[st];
+  const anim=S.sheetAnim?' anim':''; S.sheetAnim=false;
+  const title=k==='tee'?`Missed ${h.teeSide}`:k==='putt'?(()=>{ const [i,j]=(h.appCell||'1-1').split('-').map(Number); return `On the green · ${CELL_NAMES[i][j].toLowerCase()}`; })():`Missed ${(MISS8.find(m=>m[0]===h.appMiss)||[,''])[1].toLowerCase()}`;
+  const crumbs=k==='miss'?[[0,h.atgLie?(LIES_ATG.find(l=>l[0]===h.atgLie)||[,''])[1].replace(' / fairway',''):null],[1,h.atgDist!=null?`${toShow('atgDist',h.atgDist)} ${fullU()}`:null],[1,h.shortSided?'Short-sided':null]].filter(([i,t])=>t&&i<st):[];
+  let q='', body='', next=false;
+  if(step==='tee'){ q='Where was it?'; body=`<div class="big3">${[['rough','Rough'],['sand','Bunker'],['recovery','Trees']].map(([v,l])=>`<button class="chip ${h.teeLie===v&&!S.sheetPen&&h.teePen!=='drop'&&h.teePen!=='retee'?'on':''}" data-act="teelie" data-val="${v}">${l}</button>`).join('')}</div>
+    <button class="chip ${S.sheetPen||h.teePen==='drop'||h.teePen==='retee'?'on':''}" data-act="teelie" data-val="pen">Penalty</button>
+    ${S.sheetPen||h.teePen==='drop'||h.teePen==='retee'?`<div class="big2"><button class="chip ${h.teePen==='drop'?'on':''}" data-act="teepen" data-val="drop">Penalty drop</button><button class="chip ${h.teePen==='retee'?'on':''}" data-act="teepen" data-val="retee">OB, re-teed</button></div>`:''}`; }
+  if(step==='lie'){ q='Where was it?'; body=`<div class="big3">${[['fairway','Fairway'],['rough','Rough'],['sand','Bunker']].map(([v,l])=>chip('atgLie',v,l,h.atgLie===v)).join('')}</div>`; next=!!h.atgLie; }
+  if(step==='dist'){ q='How far from the flag?'; body=`<button class="sstog" data-act="shortsided" aria-pressed="${!!h.shortSided}"><span><b>Short-sided?</b><span class="small muted">Not much green between you and the flag</span></span><i class="tog ${h.shortSided?'on':''}"><i></i></i></button>
+    ${distField('atgDist',ATG_CH,fullU(),toShow('atgDist',h.atgDist),'Distance to the flag')}`; next=h.atgDist!=null; }
+  if(step==='putt'){ q='How long was your first putt?'; body=`${distField('fp',isFt()?PUTT_FT.filter(x=>x>=2&&x<=60):PUTT_M.filter(x=>x>=0.5),isFt()?'ft':'m',toShow('fp',h.fp),'First putt length')}
+    ${k==='miss'?`<div class="row between"><span class="small muted">Shots to get on the green</span>${stepper('atgShots',h.atgShots||1)}</div><button class="linkbtn small" style="justify-self:start" data-act="holedout">Holed it from off the green</button>`:'<span class="small muted">Putts are worked out from your score.</span>'}`; next=h.fp!=null; }
+  return `<div class="sheetback" data-act="sheetclose"></div><div class="sheet${anim}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="grab"></span>
+    <div class="row between"><b class="stitle">${esc(title)}</b>${steps.length>1?`<span class="sdots" aria-hidden="true">${steps.map((_,i)=>`<i class="${i<=st?'on':''}"></i>`).join('')}</span>`:''}</div>
+    ${crumbs.length?`<div class="crumbs">${crumbs.map(([i,t])=>`<button data-act="sheetstep" data-val="${i}">${esc(t)} ✎</button>`).join('')}</div>`:''}
+    <div class="qh">${q}</div>${body}
+    <div class="row between"><button class="linkbtn small" data-act="${st?'sheetstep':'sheetchange'}" data-val="${st-1}">${st?'‹ Back':'Change'}</button>${next?`<button class="btn primary small" data-act="sheetnext">${st<steps.length-1?'Next ›':'Done'}</button>`:steps.length>1?`<span class="small muted">Step ${st+1} of ${steps.length}</span>`:''}</div></div>`;
 }
-// Close the panel by itself once everything it asks has an answer.
+// After an answer, move to the next question, or close once the last one is answered.
+function sheetAdvance(field){
+  const h=hole(), k=S.sheet; if(!k) return;
+  const steps=sheetSteps(k), st=S.sheetStep||0, step=steps[st];
+  const done=(step==='lie'&&field==='atgLie')||(step==='dist'&&field==='atgDist')||(step==='putt'&&(field==='fp'||field==='putts'));
+  if(!done) return;
+  if(st<steps.length-1){ S.sheetStep=st+1; } else closeSheet();
+}
+function closeSheet(){ S.sheet=null; S.sheetStep=0; S.sheetPen=false; }
 function sheetAutoClose(){
   const h=hole(), k=S.sheet; if(!k) return;
-  if(k==='tee'&&h.teeLie&&h.teeLie!=='fairway'&&(!S.sheetPen||h.teePen==='drop'||h.teePen==='retee')) S.sheet=null;
-  if(k==='putt'&&(h.fp!=null||Number(h.putts)===0)) S.sheet=null;
-  if(k==='miss'&&h.atgLie&&h.atgDist!=null&&(h.fp!=null||Number(h.putts)===0)) S.sheet=null;
-  if(!S.sheet){ S.sheetPen=false; document.body.classList.remove('noscroll'); }
+  if(k==='tee'&&h.teeLie&&h.teeLie!=='fairway'&&(!S.sheetPen||h.teePen==='drop'||h.teePen==='retee')) closeSheet();
 }
 function vHole(){
   const r=S.round, h=hole(), par=Number(h.par), N=r.holes.length, u=fullU();
@@ -1934,7 +1959,7 @@ function vHole(){
     ${par>=4&&h.teeLie==='green'?'':`<section id="sec-atg" class="sec${uns(h,['atg','atgLie','atgDist','atgShots'])}${asm(h,['atgLie','atgDist'])}"><div class="lab"><h3>${par===3?'Tee shot: where did it finish?':'Approach: where did it finish?'}</h3></div>
       ${appDone(h)&&S.editSec!=='app'?`<button class="sumpill" data-act="editsec" data-val="app"><span>${esc(appSummary(h))}</span><u>Edit</u></button>`:`
       ${par===3&&S.clubs?`<span class="small muted">Club</span><div class="chips wide">${BAG.filter(([k])=>!['driver','3wood','lw'].includes(k)).map(([k,l])=>chip('teeClub',k,l,h.teeClub===k)).join('')}</div>`:''}
-      <span class="small muted">The flag is always in the middle. On the green, tap where you finished compared with it. Missed it, tap the side.</span>
+      <span class="tnote">⛳ The flag is always in the middle</span>
       ${appTarget(h)}
       ${S.editSec==='app'&&appDone(h)?`<button class="btn small" style="justify-self:start" data-act="editsec" data-val="">Done</button>`:''}`}
     </section>`}
@@ -2368,20 +2393,24 @@ document.addEventListener('click',e=>{
     case 'talkfrom': S.view='talk'; break;
     case 'edithole': S.editHole=!S.editHole; break;
     case 'hpar': { const h=hole(); h.par=Number(val); saveDraft(); saveRoundCourse(); break; }
-    case 'set': setField(b.dataset.field,val); if(S.sheet&&['fp','atgLie','atgDist'].includes(b.dataset.field)) sheetAutoClose(); break;
+    case 'set': setField(b.dataset.field,val); if(S.sheet) sheetAdvance(b.dataset.field); break;
+    case 'sheetstep': S.sheetStep=Math.max(0,Number(val)); break;
+    case 'sheetnext': { const st=S.sheetStep||0; if(st<sheetSteps(S.sheet).length-1) S.sheetStep=st+1; else closeSheet(); break; }
+    case 'shortsided': { const h=hole(); h.shortSided=!h.shortSided; saveDraft(); break; }
     case 'teezone': { const h=hole();
       if(val==='fw'){ h.teeSide=null; if(h.teePen==='drop'||h.teePen==='retee') setField('teePen','none'); setField('teeLie','fairway'); S.sheet=null; }
-      else { h.teeSide=val; S.sheet='tee'; S.sheetPen=h.teePen==='drop'||h.teePen==='retee'; if(h.teeLie==='fairway'||h.teeLie==='green') h.teeLie=null; saveDraft(); }
+      else { h.teeSide=val; S.sheet='tee'; S.sheetStep=0; S.sheetAnim=true; S.sheetPen=h.teePen==='drop'||h.teePen==='retee'; if(h.teeLie==='fairway'||h.teeLie==='green') h.teeLie=null; saveDraft(); }
       break; }
     case 'teelie': { const h=hole(); if(val==='pen'){ S.sheetPen=true; if(!h.teeLie||h.teeLie==='fairway') setField('teeLie','rough'); } else { S.sheetPen=false; if(h.teePen==='drop'||h.teePen==='retee') setField('teePen','none'); setField('teeLie',val); } sheetAutoClose(); break; }
     case 'teepen': setField('teePen',val); sheetAutoClose(); break;
     case 'appzone': { const h=hole();
-      if(val.startsWith('g-')){ h.appCell=val.slice(2); h.appMiss=null; setField('atg','0'); S.sheet='putt'; }
+      if(val.startsWith('g-')){ h.appCell=val.slice(2); h.appMiss=null; h.shortSided=false; setField('atg','0'); S.sheet='putt'; }
       else { h.appMiss=val.slice(2); h.appCell=null; if(!h.atg) setField('atg','1'); else saveDraft(); S.sheet='miss'; }
+      S.sheetStep=0; S.sheetAnim=true;
       S.editSec=null; break; }
-    case 'holedout': setField('putts','0'); sheetAutoClose(); break;
-    case 'sheetclose': S.sheet=null; S.sheetPen=false; break;
-    case 'sheetchange': { const h=hole(); if(S.sheet==='tee') h.teeSide=null; else { h.appCell=null; h.appMiss=null; } S.sheet=null; S.sheetPen=false; saveDraft(); break; }
+    case 'holedout': setField('putts','0'); closeSheet(); break;
+    case 'sheetclose': closeSheet(); break;
+    case 'sheetchange': { const h=hole(); if(S.sheet==='tee') h.teeSide=null; else { h.appCell=null; h.appMiss=null; } closeSheet(); saveDraft(); break; }
     case 'editsec': S.editSec=val||null; break;
     case 'step': { const f=b.dataset.field, h=hole(); const min=f==='atgShots'||f==='score'?1:0; setField(f,Math.max(min,Number(h[f]||0)+Number(b.dataset.d))); S.scrollTo=null; break; }
     case 'openexact': S.openExact[b.dataset.field]=true; render(); { const el=document.getElementById('in_'+b.dataset.field); if(el) el.focus(); } return;
