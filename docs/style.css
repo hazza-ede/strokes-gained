@@ -234,3 +234,78 @@ button,a,input,select,textarea,label,[data-act]{touch-action:manipulation}
 .herorow b{white-space:nowrap}
 .leaveout.on{border-color:var(--flag);background:var(--flag-soft)}
 .tag.out{background:#EDEFEC;border-color:#C9CFCB;color:#5E6B64}
+/* handicap-level achievements */
+.badge{position:relative;text-align:left;font:inherit;color:inherit;background:var(--surface)}
+.badge .bk{position:absolute;top:8px;right:8px;width:20px;height:20px;border-radius:50%;background:var(--pos);color:#fff;font-style:normal;font-size:.72rem;display:grid;place-items:center}
+.badge b{padding-right:20px}
+.barea{font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pos)}
+.badge.stat{opacity:1;cursor:pointer;justify-items:start;align-content:start}
+.badge.stat:not(.on){border-style:dashed}
+.badge.on{opacity:1}
+.bprog{height:6px;width:100%;background:#E6EAE7;border-radius:4px;overflow:hidden;margin-top:4px}
+.bprog div{height:100%;background:#E0A93B;border-radius:4px}
+.lvdots{display:flex;gap:4px;align-items:center;margin-top:4px}
+.lvdots i{width:9px;height:9px;border-radius:50%;background:#DDE3DF}
+.lvdots i.on{background:var(--pos)}
+.lvdots i.lk{background:transparent;border:1.5px solid #C9CFCB;width:6px;height:6px}
+.lvdots em{font-style:normal;font-size:.72rem;font-weight:700;color:#5E6B64;margin-left:4px}
+.achips{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.achips em{font-style:normal;font-size:.7rem;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:#5E6B64}
+.achips em.on{background:var(--pos);border-color:var(--pos);color:#fff}
+.lvsteps{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.lvsteps div{display:grid;justify-items:center;gap:1px;padding:8px 2px;border-radius:10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.55)}
+.lvsteps div b{font-size:.85rem}.lvsteps div span{font-size:.7rem}
+.lvsteps div.past{background:rgba(155,235,182,.18);color:#9BEBB6}
+.lvsteps div.now{background:#FFD36E;color:var(--accent)}
+.pbs{margin-top:8px}
+.ladder{display:grid;gap:6px}
+.rung{display:grid;grid-template-columns:64px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px}
+.rung .rl{font-weight:700;font-size:.9rem;display:grid}.rung .rl small{font-weight:500;color:#5E6B64;font-size:.72rem}
+.rung .rs{font-size:.8rem;color:#5E6B64;white-space:nowrap}
+.rung.on .rs{color:var(--pos);font-weight:600}
+.rung.now{border:2px solid var(--accent);background:var(--accent-soft)}
+.rung.lk{opacity:.5}
+.badge{align-content:start}
+/* badge bands */
+.lvsteps button{display:grid;justify-items:center;gap:2px;padding:9px 2px;border:0;border-radius:10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.5);font:inherit;cursor:pointer;outline-offset:2px}
+.lvsteps button span{font-size:.78rem;font-weight:700;white-space:nowrap}
+.lvsteps button i{font-style:normal;font-size:.68rem;opacity:.9}
+.lvsteps button.past{background:rgba(155,235,182,.16);color:#9BEBB6}
+.lvsteps button.now{background:#FFD36E;color:var(--accent)}
+.lvsteps button.sel{box-shadow:0 0 0 2px #fff}
+.preview{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:#EDEFEC}
+.preview>div{display:grid;gap:2px}
+.preview.past{background:var(--accent-soft);border-color:#BFDCCB}
+.preview .btn{white-space:nowrap;flex:none}
+.badge.locked{opacity:.55;filter:grayscale(1);border-style:dashed;background:transparent;cursor:default}
+.bfrom{font-size:.68rem;font-weight:600;color:#8A6A1F;background:#FBF1DA;border-radius:999px;padding:1px 7px;justify-self:start}
+.along{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--surface)}
+.along summary{font-weight:700;cursor:pointer;list-style:none;display:flex;justify-content:space-between}
+.along summary::-webkit-details-marker{display:none}
+.along summary b{color:var(--pos)}
+.along[open] summary{margin-bottom:10px}
+/* badge celebration */
+.modal.cele{padding:0;gap:0;overflow:hidden auto}
+.celetop{position:relative;overflow:hidden;background:var(--accent);color:#fff;display:grid;justify-items:center;gap:4px;padding:26px 18px 22px;text-align:center}
+.celetop h2{margin:6px 0 0;font-family:var(--display);font-size:1.9rem;color:#fff}
+.celesub{color:rgba(255,255,255,.75);font-size:.9rem}
+.bigmedal svg{width:84px;height:84px;filter:drop-shadow(0 6px 12px rgba(0,0,0,.25));animation:pop .6s cubic-bezier(.2,1.6,.4,1) both}
+.confetti{position:absolute;inset:0;pointer-events:none}
+.confetti i{position:absolute;top:-12px;width:7px;height:11px;border-radius:2px;opacity:.95;animation:fall linear infinite}
+@keyframes fall{0%{transform:translateY(-20px) rotate(0)}100%{transform:translateY(260px) rotate(540deg)}}
+@keyframes pop{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes rise{0%{transform:translateY(10px);opacity:0}100%{transform:none;opacity:1}}
+.celelist{display:grid;gap:8px;padding:16px 18px 4px}
+.celeitem{display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:center;padding:10px 12px;border:1px solid #F0DCA4;background:#FFF9EA;border-radius:14px;animation:rise .4s ease-out both}
+.celeitem>div{display:grid;gap:1px}
+.celeitem .cm svg{width:40px;height:40px}
+.celenear{margin:10px 18px 0;padding:10px 12px;border-radius:12px;background:#EDEFEC;display:grid;gap:2px}
+.celenear b{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:#5E6B64}
+.modal.cele>.row{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+@media (prefers-reduced-motion:reduce){.confetti{display:none}.bigmedal svg,.celeitem{animation:none}}
+.modal.cele>*{flex:none}
+.modal.cele>.row{position:sticky;bottom:0;background:var(--surface);box-shadow:0 -8px 16px rgba(255,255,255,.9)}
+.modal.cele{top:50%;bottom:auto;transform:translate(-50%,-50%);width:min(400px,calc(100% - 32px));max-height:86vh;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.35);animation:celein .35s cubic-bezier(.2,1.3,.4,1) both}
+.modal.cele>.row{padding:14px 18px 18px}
+@keyframes celein{0%{transform:translate(-50%,-46%) scale(.9);opacity:0}100%{transform:translate(-50%,-50%) scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){.modal.cele{animation:none}}
