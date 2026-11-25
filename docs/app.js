@@ -721,7 +721,7 @@ function render(){
   if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='mygolf'; S.myTab='mates'; } if(S.statsTab==='mates'){ S.statsTab='overview'; S.view==='stats'&&(S.view='mygolf',S.myTab='mates'); }
   strip.hidden=S.view!=='hole'; tabs.hidden=!tabViews.includes(S.view);
   document.body.classList.toggle('holeview',S.view==='hole');
-  const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,learn:vLearn,auth:vAuth,setup:vSetup,hole:vHole,review:vReview,planwiz:vPlanWiz,talk:vTalk,results:vResults,share:vShare}[S.view];
+  const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,learn:vLearn,auth:vAuth,setup:vSetup,hole:vHole,review:vReview,planwiz:vPlanWiz,compplay:vCompPlay,talk:vTalk,results:vResults,share:vShare}[S.view];
   app.innerHTML=v();
   if(S.view==='hole') strip.innerHTML=vStrip();
   let md=document.getElementById('modal'); if(!md){ md=document.createElement('div'); md.id='modal'; document.body.appendChild(md); }
@@ -1147,6 +1147,179 @@ function libraryHtml(){
   <div class="card"><div class="liblist">${ds.map(d=>`<button class="libitem" data-act="drill" data-val="${d.id}"><span><b>${esc(d.t)}</b><br><span class="small muted">${esc(d.type)} · ${d.min}–${d.max} min</span></span><span class="muted">›</span></button>`).join('')}</div>
   <span class="small muted">${ds.length} ${groups.find(g=>g[0]===c)[1].toLowerCase()} drill${ds.length===1?'':'s'}</span></div>`;
 }
+// ================= Compete: weekly practice tests, leaderboards and leagues =================
+S.comp={state:'idle',tests:[],week:[],leagues:[],members:{},season:{},screen:'list',test:null,board:'all',band:null,league:null,form:{code:'',name:''},msg:'',play:null};
+const COMP_PTS=[10,8,6,5,4,3,2,1];
+function weekStart(d){ const x=d?new Date(d+'T00:00:00'):new Date(); x.setHours(0,0,0,0); x.setDate(x.getDate()-((x.getDay()+6)%7)); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }
+const thisWeek=()=>weekStart();
+// The featured test for a week: one set to that week in Supabase, otherwise the active tests take turns.
+function featuredFor(wk){
+  const ts=S.comp.tests; if(!ts.length) return null;
+  const set=ts.find(t=>t.week_of===wk); if(set) return set;
+  const n=Math.round((new Date(wk+'T00:00:00')-new Date('2026-01-05T00:00:00'))/(7*864e5));
+  return ts[((n%ts.length)+ts.length)%ts.length];
+}
+const compMax=t=>t.shots.length*Math.max(...t.scale.map(x=>x.p));
+const compName=()=>{ const p=(me.name||'').trim().split(/\s+/); return p[0]?(p[0]+(p[1]?' '+p[1][0].toUpperCase()+'.':'')):'Golfer'; };
+const shotLabel=s=>{ if(s.d==null) return s.t; const d=s.u==='ft'?(isFt()?`${s.d} ft`:`${String(+(s.d*FT).toFixed(1))} m`):(isYd()?`${s.d} yd`:`${Math.round(s.d*YD)} m`); return `${s.t}, ${d}`; };
+const scaleLabel=x=>isFt()?x.l:(x.lm||x.l);
+const catName=c=>({putt:'Putting',atg:'Short game',app:'Approach',ott:'Tee shots'})[c]||c;
+// Best score per player from a list of score rows (later rows don't replace an equal earlier best).
+function bestBy(rows){ const m={}; rows.forEach(r=>{ const k=r.user_id; if(!m[k]||r.points>m[k].points) m[k]={...r,goes:(m[k]?m[k].goes:0)+1}; else m[k].goes++; }); return Object.values(m).sort((a,b)=>b.points-a.points||String(a.created_at).localeCompare(String(b.created_at))); }
+async function loadComp(force){
+  if(!sb||!uid) return; if(S.comp.state==='loading'||(S.comp.state==='ok'&&!force)) return;
+  S.comp.state='loading'; render();
+  try{
+    const wk=thisWeek();
+    const [t,w,m]=await Promise.all([
+      sb.from('comp_tests').select('*').eq('active',true).order('sort'),
+      sb.from('comp_scores').select('user_id,test_id,points,hcp,name,flagged,created_at').eq('week',wk).limit(5000),
+      sb.from('comp_members').select('league_id').eq('user_id',uid)]);
+    if(t.error) throw t.error;
+    S.comp.tests=t.data||[]; S.comp.week=w.data||[];
+    const ids=(m.data||[]).map(x=>x.league_id);
+    S.comp.leagues=ids.length?((await sb.from('comp_leagues').select('*').in('id',ids)).data||[]).sort((a,b)=>a.name.localeCompare(b.name)):[];
+    if(!S.mates) loadMates();
+    S.comp.state='ok';
+  }catch(e){ S.comp.state='err'; }
+  render();
+}
+async function loadLeague(id){
+  const L=S.comp.leagues.find(l=>l.id===id); if(!L) return;
+  const mem=(await sb.from('comp_members').select('user_id,name').eq('league_id',id)).data||[];
+  S.comp.members[id]=mem;
+  const since=weekStart(String(L.created_at).slice(0,10));
+  const sc=mem.length?((await sb.from('comp_scores').select('user_id,test_id,week,points,name,created_at').in('user_id',mem.map(x=>x.user_id)).gte('week',since).limit(5000)).data||[]):[];
+  // Season table: each finished or current week, rank members on that week's featured test and hand out points.
+  const tbl={}; mem.forEach(x=>tbl[x.user_id]={name:x.name,pts:0,wins:0});
+  [...new Set(sc.map(r=>r.week))].forEach(wk=>{ const f=featuredFor(wk); if(!f) return;
+    bestBy(sc.filter(r=>r.week===wk&&r.test_id===f.id)).forEach((r,i)=>{ if(!tbl[r.user_id]) return; tbl[r.user_id].pts+=COMP_PTS[i]||1; if(i===0) tbl[r.user_id].wins++; }); });
+  S.comp.season[id]={weeks:Math.max(1,Math.round((new Date(thisWeek())-new Date(since))/(7*864e5))+1),rows:Object.entries(tbl).map(([k,v])=>({user_id:k,...v})).sort((a,b)=>b.pts-a.pts)};
+  render();
+}
+function compRows(test,board){
+  const rows=S.comp.week.filter(r=>r.test_id===test.id);
+  if(board==='friends'){ const ids=new Set([uid,...(S.mates||[]).map(p=>p._id)]); return bestBy(rows.filter(r=>ids.has(r.user_id))); }
+  if(board==='league'){ const mem=S.comp.members[S.comp.league]||[]; const ids=new Set(mem.map(x=>x.user_id)); return bestBy(rows.filter(r=>ids.has(r.user_id))); }
+  const band=S.comp.band;
+  return bestBy(rows.filter(r=>(!r.flagged||r.user_id===uid)&&(!band||band==='all'||levelOf(r.hcp??30).name===band)));
+}
+function myBand(){ return levelOf(S.hcp!=null?S.hcp:20).name; }
+function lbTable(rows){
+  if(!rows.length) return `<div class="card muted">No scores yet this week. Post the first one.</div>`;
+  const me_i=rows.findIndex(r=>r.user_id===uid);
+  const row=(r,i)=>`<div class="lbr ${r.user_id===uid?'me':''}"><span class="n">${i+1}</span><span>${esc(r.user_id===uid?'You':r.name||'Golfer')}${r.goes>1&&S.comp.board==='league'?` <span class="small muted">· ${r.goes} goes</span>`:''}</span><span class="h">${r.hcp==null?'':fmtHcp(r.hcp)}</span><span class="s">${r.points}</span></div>`;
+  let body;
+  if(rows.length<=12) body=rows.map(row).join('');
+  else { const top=rows.slice(0,5).map((r,i)=>row(r,i)).join(''); const from=Math.max(5,me_i-2), to=me_i<0?5:Math.min(rows.length,me_i+3);
+    body=top+(me_i>=5?`${from>5?'<div class="lbgap">⋯</div>':''}${rows.slice(from,to).map((r,j)=>row(r,from+j)).join('')}`:'')+`<div class="lbgap">${rows.length} golfers</div>`; }
+  return `<div class="lb"><div class="lbr head"><span>#</span><span>Player</span><span style="text-align:right">Hcp</span><span style="text-align:right">Pts</span></div>${body}</div>`;
+}
+const median=a=>{ if(!a.length) return null; const s=[...a].sort((x,y)=>x-y), m=s.length>>1; return s.length%2?s[m]:Math.round((s[m-1]+s[m])/2); };
+function compHero(test,rows){
+  const mine=rows.find(r=>r.user_id===uid), wk=S.comp.week.filter(r=>r.test_id===test.id);
+  if(S.comp.board==='league'){ const L=S.comp.leagues.find(l=>l.id===S.comp.league); if(!L) return '';
+    const i=rows.findIndex(r=>r.user_id===uid), s=S.comp.season[L.id], si=s?s.rows.findIndex(r=>r.user_id===uid):-1;
+    const head=i===0&&rows[1]?`You lead this week by <span class="hl">${rows[0].points-rows[1].points} point${rows[0].points-rows[1].points===1?'':'s'}</span>.`:i===0?`You're <span class="hl">top</span> this week.`:i>0?`You're <span class="hl">${ordinal(i+1)}</span> this week, ${rows[0].points-rows[i].points} behind.`:`Post a score to get on the board.`;
+    return `<div class="hero" style="gap:8px"><span class="eyebrow">${esc(L.name)} · ${(S.comp.members[L.id]||[]).length} players · code ${esc(L.code)}</span><h2 class="herohead">${head}</h2>${s&&si>=0?`<span class="small" style="opacity:.8">Season: ${ordinal(si+1)} of ${s.rows.length} after ${s.weeks} week${s.weeks===1?'':'s'}${si>0?`, ${s.rows[0].pts-s.rows[si].pts} points behind ${esc((s.rows[0].name||'the leader').replace(/\.$/,''))}`:''}.</span>`:''}</div>`; }
+  const pts=rows.map(r=>r.points), max=compMax(test), lab=S.comp.board==='friends'?'your friends':S.comp.band&&S.comp.band!=='all'?`${S.comp.band} handicaps`:'everyone';
+  if(!mine) return `<div class="hero" style="gap:8px"><span class="eyebrow">This week · ${rows.length} score${rows.length===1?'':'s'}</span><h2 class="herohead">Post a score to see how you compare with ${esc(lab)}.</h2></div>`;
+  const beat=rows.length>1?Math.round(rows.filter(r=>r.points<mine.points).length/(rows.length-1)*100):100;
+  const bins=10, hist=Array(bins).fill(0); pts.forEach(p=>hist[Math.min(bins-1,Math.max(0,Math.floor((p/max)*bins)))]++); const hm=Math.max(1,...hist), mb=Math.min(bins-1,Math.max(0,Math.floor(mine.points/max*bins)));
+  const typ=median(pts), u5=median(bestBy(wk.filter(r=>!r.flagged&&levelOf(r.hcp??30).n===5)).map(r=>r.points));
+  return `<div class="hero" style="gap:8px"><span class="eyebrow">Your best · ${mine.points} points</span>
+    <h2 class="herohead">${rows.length>1?`Better than <span class="hl">${beat}%</span> of ${esc(lab)}`:`You're the first on this board`}</h2>
+    ${rows.length>2?`<div class="dist">${hist.map((v,i)=>`<i class="${i===mb?'you':''}" style="height:${Math.max(4,v/hm*100)}%"></i>`).join('')}</div>`:''}
+    <div class="row between small" style="opacity:.8"><span>Typical: ${typ}</span>${u5!=null?`<span>Under 5 average: ${u5}</span>`:''}</div></div>`;
+}
+function vCompete(){
+  if(!uid) return `<div class="card stack"><b>Sign in to compete</b><span class="muted">Weekly tests and leaderboards need an account so your scores can be compared.</span></div>`;
+  const C=S.comp; if(C.state==='idle'){ setTimeout(()=>loadComp(),0); }
+  if(C.state!=='ok') return C.state==='err'?`<div class="card stack"><span class="muted">Couldn't load the tests.</span><button class="btn" data-act="compreload">Try again</button></div>`:`<div class="card muted"><span class="spinner"></span> Loading this week's tests…</div>`;
+  if(!C.tests.length) return `<div class="card muted">No tests are set up yet.</div>`;
+  if(C.screen==='join') return compJoinHtml();
+  const t=C.tests.find(x=>x.id===C.test);
+  if(C.screen==='board'&&t) return compBoardHtml(t);
+  const f=featuredFor(thisWeek()), band=myBand();
+  const stat=x=>{ const all=bestBy(S.comp.week.filter(r=>r.test_id===x.id&&(!r.flagged||r.user_id===uid))), mine=all.find(r=>r.user_id===uid), bandRows=all.filter(r=>levelOf(r.hcp??30).name===band), bi=bandRows.findIndex(r=>r.user_id===uid);
+    return {all,mine,top:bi>=0&&bandRows.length>1?Math.max(1,Math.round((bi+1)/bandRows.length*100)):null,rank:all.findIndex(r=>r.user_id===uid)+1}; };
+  const fs=stat(f);
+  return `<div class="hero"><span class="eyebrow">This week's challenge · ends Sunday</span>
+    <h2 class="herohead">${esc(f.name)}${fs.mine?(fs.top?`: you're in the <span class="hl">top ${fs.top}%</span> of ${esc(band)} handicaps.`:`: your best is <span class="hl">${fs.mine.points}</span>.`):`. Can you top the board?`}</h2>
+    <span class="small" style="opacity:.8">${esc(f.blurb||'')}${fs.all.length?` · ${fs.all.length} golfer${fs.all.length===1?' has':'s have'} posted a score.`:''}</span>
+    <div class="row" style="gap:8px;flex-wrap:nowrap"><button class="btn gold" style="flex:1" data-act="compplay" data-val="${f.id}">${fs.mine?'Post a new score':'Play it'}</button><button class="btn ghost" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.4)" data-act="comptest" data-val="${f.id}">Leaderboard</button></div></div>
+    <div class="row between"><h3>All tests</h3><button class="linkbtn small" data-act="compjoinform">${C.leagues.length?'Leagues':'Join or create a league'}</button></div>
+    ${C.tests.map(x=>{ const s=stat(x); return `<button class="ch" data-act="comptest" data-val="${x.id}"><div class="top2"><b>${esc(x.name)}${x.id===f.id?' <span class="pill2 gold">This week</span>':''}</b><span class="pill2">${catName(x.cat)}</span></div><span class="small muted">${esc(x.blurb||'')}</span><div class="meta small">${s.mine?`<b>You: ${s.mine.points} pts</b><span class="muted">#${s.rank} of ${s.all.length}</span>${s.top?`<span class="pill2 gold">Top ${s.top}% of ${esc(band)}s</span>`:''}`:`<span class="muted">${s.all.length?`${s.all.length} score${s.all.length===1?'':'s'} this week`:'No scores yet this week'}</span><span class="pill2">Play it</span>`}</div></button>`; }).join('')}
+    <span class="small muted">Boards reset every Monday. Your best score each week counts.</span>`;
+}
+function compBoardHtml(t){
+  const C=S.comp; if(C.board==='league'&&!C.league&&C.leagues[0]) C.league=C.leagues[0].id;
+  if(C.board==='league'&&C.league&&!C.members[C.league]) setTimeout(()=>loadLeague(C.league),0);
+  if(C.band==null) C.band=myBand();
+  const rows=C.board==='league'&&!C.leagues.length?[]:compRows(t,C.board);
+  const chips=(items,cur,act)=>`<div class="chips hscroll">${items.map(([k,l])=>`<button class="chip ${cur===k?'on':''}" data-act="${act}" data-val="${k}">${esc(l)}</button>`).join('')}</div>`;
+  const s=C.board==='league'&&C.league&&C.season[C.league];
+  return `<div class="row between"><button class="linkbtn" data-act="compback">‹ All tests</button><span class="small muted">This week · ends Sunday</span></div>
+  <h2>${esc(t.name)}</h2>
+  <div class="seg libseg">${[['all','Everyone'],['friends','Friends'],['league','Leagues']].map(([k,l])=>`<button class="${C.board===k?'on':''}" data-act="compboard" data-val="${k}">${l}</button>`).join('')}</div>
+  ${C.board==='all'?chips([['all','All'],[myBand(),`Your band: ${myBand()}`],...LEVELS.slice().reverse().filter(l=>l.name!==myBand()).map(l=>[l.name,l.name])],C.band,'compband'):''}
+  ${C.board==='league'?chips([...C.leagues.map(l=>[l.id,l.name]),['+','+ Join or create']],C.league,'compleague'):''}
+  ${C.board==='league'&&!C.leagues.length?`<div class="card stack"><b>You're not in a league yet</b><span class="muted">Start one with your mates or join one with a code.</span><button class="btn primary" data-act="compjoinform">Join or create a league</button></div>`:`${compHero(t,rows)}${C.board==='league'&&C.league&&!C.members[C.league]?'<div class="card muted"><span class="spinner"></span> Loading league…</div>':lbTable(rows)}`}
+  ${s&&s.rows.length?`<div class="card stack" style="gap:0"><b style="margin-bottom:4px">Season standings</b>${s.rows.map((r,i)=>`<div class="stn"><span>${i+1}. ${esc(r.user_id===uid?'You':r.name||'Golfer')}${r.wins?` <span class="small muted">· ${r.wins} win${r.wins>1?'s':''}</span>`:''}</span><b>${r.pts} pts</b></div>`).join('')}<span class="small muted" style="margin-top:6px">Each week's featured test: 10 points for 1st, 8 for 2nd, 6 for 3rd, then 5, 4, 3, 2, 1.</span></div>`:''}
+  <button class="btn big primary" data-act="compplay" data-val="${t.id}">Post a new score</button>`;
+}
+function compJoinHtml(){
+  const F=S.comp.form;
+  return `<div class="row between"><button class="linkbtn" data-act="compback">‹ Back</button></div><h2>Leagues</h2>
+  ${S.comp.leagues.length?`<div class="card stack" style="gap:0">${S.comp.leagues.map(l=>`<div class="stn"><span><b>${esc(l.name)}</b><br><span class="small muted">Code ${esc(l.code)}</span></span><button class="linkbtn small" data-act="compleave" data-val="${l.id}">Leave</button></div>`).join('')}</div>`:''}
+  <div class="card stack"><b>Join with a code</b><span class="small muted">Ask whoever set up the league for its code.</span><input class="field" data-cf="code" value="${esc(F.code)}" placeholder="e.g. TUE-4821" autocapitalize="characters"><button class="btn primary" data-act="compjoin">Join league</button></div>
+  <div class="card stack"><b>Create a league</b><input class="field" data-cf="name" value="${esc(F.name)}" placeholder="League name, e.g. Tuesday Crew"><span class="small muted">You'll get a code to share. Everyone plays the same weekly test and the season table builds up week by week.</span><button class="btn ghost" data-act="compcreate">Create league</button></div>
+  ${S.comp.msg?`<div class="flagnote">${esc(S.comp.msg)}</div>`:''}`;
+}
+async function compJoin(){
+  const code=S.comp.form.code.trim().toUpperCase(); if(!code){ S.comp.msg='Type the league code first.'; return render(); }
+  const {data}=await sb.from('comp_leagues').select('*').eq('code',code).maybeSingle();
+  if(!data){ S.comp.msg=`No league found with code ${code}.`; return render(); }
+  const r=await sb.from('comp_members').upsert({league_id:data.id,user_id:uid,name:compName()});
+  if(r.error){ S.comp.msg='Couldn\'t join. Try again.'; return render(); }
+  S.comp.leagues=[...S.comp.leagues.filter(l=>l.id!==data.id),data]; S.comp.form.code=''; S.comp.msg=`You're in ${data.name}.`; S.comp.league=data.id; delete S.comp.members[data.id]; render();
+}
+async function compCreate(){
+  const name=S.comp.form.name.trim(); if(!name){ S.comp.msg='Give the league a name first.'; return render(); }
+  const pre=(name.replace(/[^A-Za-z]/g,'').toUpperCase()+'LGE').slice(0,3);
+  for(let k=0;k<5;k++){ const code=`${pre}-${1000+Math.floor(Math.random()*9000)}`;
+    const {data,error}=await sb.from('comp_leagues').insert({name,code}).select().single();
+    if(!error&&data){ await sb.from('comp_members').insert({league_id:data.id,user_id:uid,name:compName()}); S.comp.leagues=[...S.comp.leagues,data]; S.comp.form.name=''; S.comp.msg=`${name} is set up. Share the code ${code} so others can join.`; S.comp.league=data.id; return render(); } }
+  S.comp.msg='Couldn\'t create the league. Try again.'; render();
+}
+// ---- playing a test, shot by shot ----
+function vCompPlay(){
+  const P=S.comp.play, t=P&&S.comp.tests.find(x=>x.id===P.test); if(!t){ S.view='improve'; return vImprove(); }
+  const n=t.shots.length, i=P.i, total=P.ans.reduce((a,v)=>a+(v==null?0:t.scale[v].p),0), done=i>=n;
+  const list=`<div class="card"><div class="small muted" style="margin-bottom:4px">So far · ${total} pts</div>${t.shots.map((s,k)=>`<div class="stn"><span>${esc(shotLabel(s))}</span><b>${P.ans[k]==null?'–':t.scale[P.ans[k]].p+' pt'+(Math.abs(t.scale[P.ans[k]].p)===1?'':'s')}</b></div>`).join('')}</div>`;
+  return `<div class="wiz"><div class="wiztop"><button class="linkbtn" data-act="compcancel">Cancel</button><span class="small muted">${done?'Finished':`Shot ${i+1} of ${n}`}</span></div>
+    <div class="wizbar" style="grid-template-columns:repeat(${n},1fr);gap:3px">${t.shots.map((_,k)=>`<i class="${P.ans[k]!=null?'on':''}"></i>`).join('')}</div>
+    <h1 class="wizh">${esc(t.name)}</h1>
+    ${done?`<div class="hero" style="gap:6px"><span class="eyebrow">Your score</span><h2 class="herohead"><span class="hl">${total}</span> points out of ${compMax(t)}</h2><span class="small" style="opacity:.8">It goes on the boards with your ${fmtHcp(S.hcp!=null?S.hcp:'')} handicap.</span></div>`
+    :`<div class="card stack"><b>Shot ${i+1}: ${esc(shotLabel(t.shots[i]))}</b><span class="small muted">Where did it finish?</span>
+      <div class="chips wide">${t.scale.map((x,k)=>`<button class="chip ${P.ans[i]===k?'on':''}" data-act="compans" data-val="${k}">${esc(scaleLabel(x))}<span class="sub">${x.p>0?x.p+' pt'+(x.p>1?'s':''):x.p===0?'0':'−'+Math.abs(x.p)}</span></button>`).join('')}</div></div>`}
+    ${list}
+    ${S.comp.msg&&done?`<div class="flagnote">${esc(S.comp.msg)}</div>`:''}
+    <div class="wizfoot">${i>0?`<button class="btn ghost" data-act="compprev">Back</button>`:''}${done?`<button class="btn big primary" data-act="compsave" ${P.busy?'disabled':''}>${P.busy?'<span class="spinner"></span> Saving…':'Save score'}</button>`:''}</div></div>`;
+}
+async function compSave(){
+  const P=S.comp.play, t=S.comp.tests.find(x=>x.id===P.test); if(!t||P.busy) return;
+  const pts=P.ans.reduce((a,v)=>a+(v==null?0:t.scale[v].p),0), max=compMax(t), h=S.hcp!=null?Number(S.hcp):null;
+  // Hold back scores far beyond what's realistic for the handicap from the public board (friends and leagues still see them).
+  const flagged=h!=null&&((h>=15&&pts>=.75*max)||(h>=8&&pts>=.9*max));
+  P.busy=true; render();
+  const row={test_id:t.id,week:thisWeek(),points:pts,hcp:h,name:compName(),shots:P.ans,flagged};
+  const r=await sb.from('comp_scores').insert(row);
+  if(r.error){ P.busy=false; S.comp.msg='Couldn\'t save your score. Check your connection and try again.'; return render(); }
+  S.comp.week.push({...row,user_id:uid,created_at:new Date().toISOString()});
+  if(S.comp.board==='league'&&S.comp.league) delete S.comp.members[S.comp.league];
+  S.comp.play=null; S.comp.msg=''; S.view='improve'; S.impTab='compete'; S.comp.screen='board'; S.comp.test=t.id; window.scrollTo(0,0); render();
+}
 // ================= 4-week program =================
 const TESTS={
   putt:{t:'Putting test',how:()=>`Ten putts, two each from ${isFt()?'3, 6, 9, 12 and 20 ft':'1, 2, 3, 4 and 6 m'}. Count how many you hole.`,max:10,band:[3,4,5,6,7]},
@@ -1462,10 +1635,11 @@ function vImprove(){
   return `
   <div class="top"><span class="brand">Improve</span></div>
   <div class="stack">
-    ${subTabs('imptab',S.impTab||'overview',[['overview','Overview'],['plan','4-week plan'],['drills','Drills']])}
+    ${subTabs('imptab',S.impTab||'overview',[['overview','Overview'],['plan','4-week plan'],['drills','Drills'],['compete','Compete']])}
     ${(S.impTab||'overview')==='overview'?`${heroImprove()}${planCta()}${goalsHtml()}`:''}
     ${S.impTab==='plan'?blockHtml():''}
     ${S.impTab==='drills'?`${S.block?'':planHtml()}${libraryHtml()}`:''}
+    ${S.impTab==='compete'?vCompete():''}
     ${sample?'':'<!--'}<div class="card stack">
       <h2>Where should I miss?</h2>
       <p class="muted" style="margin:0">Take a photo of the shot in front of you. Claude looks at the hazards and tells you where to aim and which side is the safe miss.</p>
@@ -1995,6 +2169,21 @@ document.addEventListener('click',e=>{
     case 'wizclose': S.view='improve'; S.impTab='plan'; window.scrollTo(0,0); break;
     case 'wizgo': S.wiz=Number(val); window.scrollTo(0,0); break;
     case 'libcat': S.libCat=val; break;
+    case 'compreload': loadComp(true); return;
+    case 'comptest': S.comp.screen='board'; S.comp.test=val; S.comp.msg=''; window.scrollTo(0,0); break;
+    case 'compback': S.comp.screen='list'; S.comp.msg=''; window.scrollTo(0,0); break;
+    case 'compboard': S.comp.board=val; if(val==='league'&&!S.comp.league&&S.comp.leagues[0]) S.comp.league=S.comp.leagues[0].id; if(val==='friends'&&!S.mates) loadMates(); break;
+    case 'compband': S.comp.band=val; break;
+    case 'compleague': if(val==='+'){ S.comp.screen='join'; S.comp.msg=''; } else { S.comp.league=val; } break;
+    case 'compjoinform': S.comp.screen='join'; S.comp.msg=''; window.scrollTo(0,0); break;
+    case 'compjoin': compJoin(); return;
+    case 'compcreate': compCreate(); return;
+    case 'compleave': if(sb&&uid) sb.from('comp_members').delete().eq('league_id',val).eq('user_id',uid).then(()=>{}); S.comp.leagues=S.comp.leagues.filter(l=>l.id!==val); if(S.comp.league===val) S.comp.league=null; S.comp.msg='You left the league.'; break;
+    case 'compplay': S.comp.play={test:val,i:0,ans:[]}; S.comp.msg=''; S.view='compplay'; window.scrollTo(0,0); break;
+    case 'compans': { const P=S.comp.play, t=S.comp.tests.find(x=>x.id===P.test); P.ans[P.i]=Number(val); P.i=Math.min(t.shots.length,P.i+1); break; }
+    case 'compprev': S.comp.play.i=Math.max(0,S.comp.play.i-1); break;
+    case 'compsave': compSave(); return;
+    case 'compcancel': S.comp.play=null; S.view='improve'; S.impTab='compete'; window.scrollTo(0,0); break;
     case 'imptab': S.view='improve'; S.impTab=val; window.scrollTo(0,0); break;
     case 'blockreset': if(S.block&&S.block.remind&&sb&&uid) sb.from('push_reminders').update({enabled:false}).eq('user_id',uid).then(()=>{},()=>{}); S.block=null; saveBlock(); break;
     case 'remindoff': S.block.remind='off'; saveBlock(); S.remindMsg=''; savePushRow(null); break;
@@ -2074,6 +2263,7 @@ document.addEventListener('change',e=>{ const el=e.target; if(el.id==='cadphoto'
 document.addEventListener('input',e=>{
   const el=e.target;
   if(el.dataset.cad){ S.cad[el.dataset.cad]=el.value; return; }
+  if(el.dataset.cf){ S.comp.form[el.dataset.cf]=el.value; return; }
   if(el.dataset.clubq){ S.clubQ=el.value; const l=document.getElementById('clublist'); if(l) l.innerHTML=clubListHtml(); return; }
   if(el.dataset.auth){ S.auth[el.dataset.auth]=el.value; return; }
   if(el.dataset.me){ me.name=el.value; clearTimeout(window.__nm); window.__nm=setTimeout(()=>{ if(sb&&uid){ sb.from('profiles').upsert({id:uid,display_name:me.name}); publishMe(); } },800); return; }
