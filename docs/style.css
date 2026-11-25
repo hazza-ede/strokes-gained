@@ -154,3 +154,13 @@ input,textarea,select{font-size:16px}
 details.assume summary{cursor:pointer;font-weight:600;font-size:.92rem;padding:4px 0}
 details.assume ul{margin:6px 0 0;padding-left:18px;display:grid;gap:4px;color:var(--muted)}
 details.assume b{color:var(--ink);font-weight:600}
+/* batch 2: goals, practice plans, achievements */
+.goal{display:grid;gap:4px;padding:10px 0;border-top:1px solid var(--line)}
+.goaltrack{height:8px}
+.plan{margin:0;padding-left:20px;display:grid;gap:10px}
+.plan li{display:grid;gap:2px}
+.badges{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.badge{display:grid;gap:2px;padding:10px;border:1px solid var(--line);border-radius:12px;opacity:.6}
+.badge.on{opacity:1;border-color:var(--pos);background:var(--accent-soft)}
+.small.pos{color:var(--pos)}
+.goaltrack div{background:var(--pos)}
