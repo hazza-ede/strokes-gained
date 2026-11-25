@@ -307,6 +307,8 @@ const PLACES=[['range','Range'],['green','Putting green'],['short','Chipping and
 // The plan picks the best mix for the golfer's focus goals, time and places, and the Shuffle button swaps in alternatives.
 const D=(id,t,areas,places,min,max,type,how,score)=>({id,t,areas,places,min,max,type,how,score});
 const DRILL_LIB=[
+  Object.assign(D('tee12','12-tee drill',{'putt-short':1,'putt-mid':.6},['green'],10,20,'Pressure','Twelve tees around one hole: four at each of three distances, on four sides. Hole every putt, ring by ring.','Clear all 12. Count how many putts it took.'),{anim:'tee12',
+    steps:()=>{ const d=isFt()?['3 ft','6 ft','9 ft']:['1 m','2 m','3 m']; return [`Pick a hole with some slope. Push in four tees at ${d[0]}, four at ${d[1]} and four at ${d[2]}, one on each side of the hole like a plus sign.`,`Start at ${d[0]}: putt from each of the four tees. Every side breaks differently, so read each one.`,`Hole all four and move out to ${d[1]}, then ${d[2]}.`,`Miss one and go back to the first tee of that ring.`]; }}),
   D('gate','Gate drill',{'putt-short':1},['green','home'],5,15,'Technique','Two tees just wider than the ball, a metre out. Roll every putt through the gate and into the hole.','Makes out of 30.'),
   D('clock','Clock drill',{'putt-short':1},['green'],10,15,'Pressure','Six balls round the hole at a metre, then a metre and a half. Miss one and restart that ring.','Longest run of makes.'),
   D('fifty','50 in a row',{'putt-short':1},['green'],10,20,'Pressure','Hole 50 putts in a row from a metre. Miss and you start again from zero.','Best run.'),
@@ -491,6 +493,10 @@ function render(){
   const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,auth:vAuth,setup:vSetup,hole:vHole,talk:vTalk,results:vResults,share:vShare}[S.view];
   app.innerHTML=v();
   if(S.view==='hole') strip.innerHTML=vStrip();
+  let md=document.getElementById('modal'); if(!md){ md=document.createElement('div'); md.id='modal'; document.body.appendChild(md); }
+  const dr=S.drillOpen&&drillById(S.drillOpen);
+  if(dr){ if(md.dataset.id!==dr.id){ md.innerHTML=drillModalHtml(dr); md.dataset.id=dr.id; document.body.classList.add('noscroll'); startAnim(dr); const c=md.querySelector('.modal button'); if(c) c.focus(); } }
+  else if(md.dataset.id){ stopAnim(); md.innerHTML=''; md.dataset.id=''; document.body.classList.remove('noscroll'); }
   if(!tabs.hidden) tabs.innerHTML=`<div class="in">${tabViews.map(t=>`<button class="${S.view===t?'on':''}" data-act="tab" data-val="${t}" aria-label="${t}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[t]}</svg>${TABL[t]}</button>`).join('')}</div>`;
   if(S.scrollTo){ const el=document.getElementById(S.scrollTo); S.scrollTo=null; if(el){ const rm=matchMedia('(prefers-reduced-motion: reduce)').matches; el.scrollIntoView({block:'nearest',behavior:rm?'auto':'smooth'}); } }
 }
@@ -734,6 +740,68 @@ function goalsHtml(){
     ${g.items.length?g.items.map(row).join(''):'<span class="muted">Nothing is costing you shots against your goal right now. Try a lower goal handicap in My golf.</span>'}
   </div>`;
 }
+// ----- drill pop-up: steps, scoring and (for some drills) a looping top-down animation -----
+const drillById=id=>DRILL_LIB.find(d=>d.id===id);
+function drillModalHtml(d){
+  const steps=d.steps?d.steps():[d.how], placeName=k=>(PLACES.find(x=>x[0]===k)||[,k])[1];
+  return `<div class="modalback" data-act="closedrill"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="drilltitle">
+    <div class="row between" style="flex-wrap:nowrap"><h2 id="drilltitle">${esc(d.t)}</h2><button class="btn ghost" data-act="closedrill" aria-label="Close">✕</button></div>
+    <div class="row" style="gap:6px"><span class="tag soft">${esc(d.type)}</span><span class="small muted">${d.min}–${d.max} min · ${d.places.map(placeName).join(' or ')}</span></div>
+    ${d.anim?`<div class="drillanim"><svg id="drillsvg" viewBox="0 0 300 330" role="img" aria-label="Animation of the ${esc(d.t)}"></svg><span class="small muted" id="drillcap" aria-live="polite"></span></div>`:''}
+    <ol class="steps">${steps.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>
+    <div class="scorebox"><span class="small muted">Score it</span><b>${esc(d.score)}</b></div>
+    <button class="btn big primary" data-act="closedrill">Got it</button>
+  </div>`;
+}
+let animRaf=null;
+function stopAnim(){ if(animRaf) cancelAnimationFrame(animRaf); animRaf=null; }
+function startAnim(d){
+  stopAnim(); const svg=document.getElementById('drillsvg'); if(!svg||d.anim!=='tee12') return;
+  const C=150, R=[38,78,118], dirs=[[0,-1],[1,0],[0,1],[-1,0]], lab=isFt()?['3 ft','6 ft','9 ft']:['1 m','2 m','3 m'];
+  // Script: four putts per ring; one miss on the outside ring sends you back to its first tee.
+  const seq=[]; for(let r=0;r<3;r++) for(let i=0;i<4;i++) seq.push({r,i,make:!(r===2&&i===2)});
+  seq.push(...[0,1,2,3].map(i=>({r:2,i,make:true,retry:true})));
+  const T=1100, HOLD=2200, total=seq.length*T+HOLD;
+  const ns='http://www.w3.org/2000/svg', el=(t,a)=>{ const e=document.createElementNS(ns,t); for(const k in a) e.setAttribute(k,a[k]); return e; };
+  svg.innerHTML='';
+  svg.appendChild(el('circle',{cx:C,cy:C,r:146,fill:'#3E9B63'})); svg.appendChild(el('circle',{cx:C,cy:C,r:136,fill:'#2F8552'}));
+  R.forEach((r,k)=>{ svg.appendChild(el('circle',{cx:C,cy:C,r,fill:'none',stroke:'rgba(255,255,255,.22)','stroke-dasharray':'3 5'})); const t=el('text',{x:C+r*0.71+4,y:C-r*0.71-4,fill:'rgba(255,255,255,.85)','font-size':11,'font-family':'Inter,system-ui,sans-serif','font-weight':600}); t.textContent=lab[k]; svg.appendChild(t); });
+  svg.appendChild(el('circle',{cx:C,cy:C,r:8,fill:'#0b1f16'})); svg.appendChild(el('line',{x1:C,y1:C,x2:C+16,y2:C-26,stroke:'#fff','stroke-width':2})); svg.appendChild(el('path',{d:`M${C+16} ${C-26} l12 4 l-11 5z`,fill:'#E6B422'}));
+  const tees=[]; R.forEach((r,ri)=>dirs.forEach(([dx,dy],i)=>{ const t=el('circle',{cx:C+dx*r,cy:C+dy*r,r:4.5,fill:'#F4D35E',stroke:'#7a5d00','stroke-width':1}); svg.appendChild(t); tees.push({ri,i,t,x:C+dx*r,y:C+dy*r}); }));
+  const ball=el('circle',{cx:C,cy:C-R[0],r:5.5,fill:'#fff',stroke:'#bbb','stroke-width':.8}); svg.appendChild(ball);
+  const bar=el('g',{}); svg.appendChild(bar);
+  const txt=el('text',{x:C,y:318,'text-anchor':'middle','font-size':15,'font-weight':700,'font-family':'Inter Tight,Inter,system-ui,sans-serif',fill:'#111814'}); svg.appendChild(txt);
+  const cap=document.getElementById('drillcap');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduce){ ball.setAttribute('opacity',0); txt.textContent='12 tees: 4 sides × 3 distances'; if(cap) cap.textContent='Start on the inside ring and work out.'; return; }
+  const ease=x=>1-Math.pow(1-x,2.2); const t0=performance.now();
+  const frame=now=>{
+    const el2=(now-t0)%total, n=Math.floor(el2/T), f=(el2%T)/T;
+    const doneSet=new Set(); let made=0, msg='', last=null;
+    for(let j=0;j<Math.min(n,seq.length);j++){ const s=seq[j]; if(s.make){ doneSet.add(s.r*4+s.i); made++; } else { for(let i=0;i<4;i++) doneSet.delete(s.r*4+i); made=Math.max(0,made-2); } last=s; }
+    tees.forEach((t,k)=>{ t.t.setAttribute('fill',doneSet.has(k)?'#7ee2a1':'#F4D35E'); });
+    if(n<seq.length){
+      const s=seq[n], tee=tees[s.r*4+s.i], [dx,dy]=dirs[s.i];
+      const p=Math.min(1,ease(Math.min(1,f/0.8)));
+      // a miss slides past the right edge of the hole
+      const ex=s.make?C:C+dx*-14+(-dy)*13, ey=s.make?C:C+dy*-14+dx*13;
+      ball.setAttribute('cx',tee.x+(ex-tee.x)*p); ball.setAttribute('cy',tee.y+(ey-tee.y)*p);
+      ball.setAttribute('r',s.make&&f>0.8?Math.max(0,5.5*(1-(f-0.8)/0.12)):5.5); ball.setAttribute('opacity',1);
+      msg=s.make?`${lab[s.r]} ring · ${s.retry?'back on track':'putt '+(s.i+1)+' of 4'}`:`Missed at ${lab[s.r]}: back to the first tee of this ring`;
+      txt.setAttribute('fill',s.make?'#111814':'#C2402F'); txt.textContent=s.make?`Holed ${doneSet.size+(f>0.85?1:0)} of 12`:(f>0.75?'Missed. Restart this ring':`Holed ${doneSet.size} of 12`);
+    } else { ball.setAttribute('opacity',0); txt.setAttribute('fill','#17804A'); txt.textContent='All 12 holed'; msg='Done. Count how many putts it took and try to beat it next time.'; }
+    if(cap&&cap.textContent!==msg) cap.textContent=msg;
+    animRaf=requestAnimationFrame(frame);
+  };
+  animRaf=requestAnimationFrame(frame);
+}
+function libraryHtml(){
+  const groups=[['putt','Putting'],['atg','Chipping and bunkers'],['app','Approach'],['ott','Driving']];
+  return `<details class="card library"><summary><b>Browse all ${DRILL_LIB.length} drills</b><span class="small muted">Tap any drill to see how it works</span></summary>
+    ${groups.map(([c,l])=>{ const ds=DRILL_LIB.filter(d=>Object.keys(d.areas).some(k=>CAT_OF(k)===c&&d.areas[k]>=0.5)); return `<h3 style="margin-top:12px">${l}</h3><div class="liblist">${ds.map(d=>`<button class="libitem" data-act="drill" data-val="${d.id}"><span><b>${esc(d.t)}</b>${d.anim?' <span class="tag soft">Animated</span>':''}<br><span class="small muted">${esc(d.type)} · ${d.min}–${d.max} min</span></span><span class="muted">›</span></button>`).join('')}</div>`; }).join('')}
+  </details>`;
+}
 function planHtml(){
   const P=practicePlan(), placeName=k=>(PLACES.find(x=>x[0]===k)||[,k])[1];
   return `${secHead("Today's practice",`Built for your focus: ${P.areas.map(a=>esc(a.title.toLowerCase())).join(', ')||'your biggest losses'}`)}
@@ -749,9 +817,9 @@ function planHtml(){
     <div class="row between"><div><b class="planmins">${P.mins} min</b><div class="small muted">${P.items.length} drill${P.items.length>1?'s':''}${P.warm?' plus a warm-up':''}${P.spare>=5?` · ${P.spare} min spare to repeat your favourite`:''}</div></div><button class="btn" data-act="planshuffle">Shuffle drills</button></div>
     <ol class="plan">
       ${P.warm?`<li><div class="row between"><b>Warm up</b><span class="pill">${P.warm} min</span></div><span class="small muted">${esc(P.warmText)}</span></li>`:''}
-      ${P.items.map(x=>`<li><div class="row between" style="flex-wrap:nowrap"><b>${esc(x.d.t)}</b><span class="pill">${x.m} min</span></div>
+      ${P.items.map(x=>`<li><button class="drillbtn" data-act="drill" data-val="${x.d.id}"><div class="row between" style="flex-wrap:nowrap"><b>${esc(x.d.t)}</b><span class="pill">${x.m} min</span></div>
         <div class="row" style="gap:6px"><span class="tag soft">${esc(x.d.type)}</span>${x.why!=='focus'?'<span class="tag extra">Extra</span>':''}${x.fixes.map(f=>`<span class="small muted">${esc(f.title)}</span>`).join('<span class="small muted">·</span>')}<span class="small muted">· ${esc(placeName(x.at))}</span></div>
-        <span class="small">${esc(x.d.how)}</span><span class="small muted">Score it: ${esc(x.d.score)}</span></li>`).join('')}
+        <span class="small">${esc(x.d.how)}</span><span class="small link">${x.d.anim?'Watch how it works ›':'See the steps ›'}</span></button></li>`).join('')}
     </ol>
     ${P.missing.length?`<span class="small muted">Not covered at ${(S.plan.places||[]).map(placeName).join(' or ').toLowerCase()||'these places'}: ${P.missing.map(x=>esc(x.title.toLowerCase())).join(', ')}. Add another place to include ${P.missing.length>1?'them':'it'}.</span>`:''}
   </div>`:`<div class="flagnote">${(S.plan.places||[]).length?'None of your focus areas can be practised there. Add another place above.':'Pick where you are practising.'}</div>`}`;
@@ -763,6 +831,7 @@ function vImprove(){
   <div class="stack">
     ${goalsHtml()}
     ${planHtml()}
+    ${libraryHtml()}
     ${secHead('Learn','Short lessons on playing smarter')}
     ${sample?'':'<!--'}<div class="card stack">
       <h2>Where should I miss?</h2>
@@ -1108,6 +1177,8 @@ document.addEventListener('click',e=>{
     case 'fullunit': S.fullUnit=val; lsSet('sg.fullunit',val); break;
     case 'toggle': S[val]=!S[val]; lsSet('sg.'+val,S[val]); if(val==='assumeOn') saveProfile(); break;
     case 'focusgoal': { const f=S.goals.focus, i=f.indexOf(val); if(i>=0) f.splice(i,1); else f.push(val); lsSet('sg.goals',S.goals); saveProfile(); break; }
+    case 'drill': S.drillOpen=val; break;
+    case 'closedrill': S.drillOpen=null; break;
     case 'planshuffle': S.planSeed=(S.planSeed||1)+1; lsSet('sg.planSeed',S.planSeed); break;
     case 'planextra': { const e=S.plan.extra||(S.plan.extra=[]), i=e.indexOf(val); if(i>=0) e.splice(i,1); else e.push(val); lsSet('sg.plan',S.plan); saveProfile(); break; }
     case 'planmins': S.plan.mins=Number(val); lsSet('sg.plan',S.plan); saveProfile(); break;
@@ -1176,7 +1247,7 @@ document.addEventListener('input',e=>{
 });
 // Redraw after leaving a box, unless focus moved to a button (that tap redraws anyway).
 document.addEventListener('focusout',e=>{ const d=e.target.dataset||{}; if(d.hcp!=null||d.hlen||d.num||d.bag){ const to=e.relatedTarget; if(!(to&&to.closest&&to.closest('[data-act]'))) render(); } });
-document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.dataset&&(e.target.dataset.num||e.target.dataset.hcp!=null)) e.target.blur(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.drillOpen){ S.drillOpen=null; render(); return; } if(e.key==='Enter'&&e.target.dataset&&(e.target.dataset.num||e.target.dataset.hcp!=null)) e.target.blur(); });
 
 async function toggleSharing(){
   if(!sb||!uid) return;
