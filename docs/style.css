@@ -329,3 +329,12 @@ button,a,input,select,textarea,label,[data-act]{touch-action:manipulation}
 .chev{color:var(--muted);font-size:.9rem}
 .teechips{padding:10px 12px 12px}
 .clubhead.picked{background:var(--accent-soft)}.clubhead.picked .chev{color:var(--pos);font-weight:700}
+/* worked-out values */
+.derivednote{display:block;color:#5E6B64}
+.derivednote.calc{color:var(--pos);font-weight:600}
+/* blanks + saves */
+.flagcard.missing{border-left-color:#8FA79A}
+.flagcard.missing .flagtype{color:#5E6B64}
+.fixchips{gap:6px}
+.fixchips .chip{min-width:56px;padding:10px 12px}
+.savepill{display:inline-block;justify-self:start;margin-top:6px;padding:4px 12px;border-radius:999px;background:var(--accent);color:#fff;font-weight:700;font-size:.82rem}
