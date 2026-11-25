@@ -164,3 +164,18 @@ details.assume b{color:var(--ink);font-weight:600}
 .badge.on{opacity:1;border-color:var(--pos);background:var(--accent-soft)}
 .small.pos{color:var(--pos)}
 .goaltrack div{background:var(--pos)}
+/* batch 3: clearer sections and sub-tabs */
+.sechead{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-top:26px;padding-top:14px;border-top:3px solid var(--ink)}
+.sechead.first{margin-top:6px}
+.sechead h2{font-size:1.6rem;line-height:1.15;letter-spacing:-0.02em}
+.sechead p{margin:3px 0 0;color:var(--muted);font-size:.9rem;line-height:1.35}
+.subtabs{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;padding:8px 0 10px;margin:0 0 4px;background:var(--bg);scrollbar-width:none}
+.subtabs::-webkit-scrollbar{display:none}
+.subtabs button{flex:1 1 0;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:9px 6px;white-space:nowrap;font-weight:600;font-size:.95rem;color:var(--ink)}
+.subtabs button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pill{display:inline-block;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:3px 10px;font-size:.8rem;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.planmins{font-family:var(--display);font-size:1.8rem;line-height:1}
+.plancard{border-color:var(--accent);border-width:2px}
+.plan{gap:14px}
+.plan li{padding-bottom:12px;border-bottom:1px solid var(--line)}
+.plan li:last-child{border-bottom:0;padding-bottom:0}
