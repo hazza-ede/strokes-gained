@@ -139,7 +139,7 @@ function needleMovers(rounds){
 }
 function famStats(rounds){
   let fwO=0,fw=0,gO=0,g=0,scO=0,sc=0,udO=0,ud=0,sdO=0,sd=0,rec=0,putts=0,three=0,pens=0,holes=0,score=0,par=0;
-  rounds.forEach(r=>r.holes.forEach(h=>{ if(h.score==null) return; const p=Number(h.par),s=Number(h.score),pu=Number(h.putts||0);
+  rounds.forEach(r=>r.holes.forEach(h=>{ if(h.score==null) return; const p=Number(h.par),s=h.pickup?netDouble(h,r.hcp):Number(h.score),pu=Number(h.putts||0);
     holes++; score+=s; par+=p; putts+=pu;
     if(p>=4&&h.teeLie){ fwO++; if((h.teeLie==='fairway'||h.teeLie==='green')&&(h.teePen||'none')==='none') fw++; }
     const gir = pu>0 ? (s-pu)<=p-2 : s<=p-2; gO++; if(gir) g++; else { scO++; if(s<=p) sc++; }
@@ -592,7 +592,7 @@ function bounceBack(rounds){
 function roundFacts(r){
   const f={score:0,par:0,holes:0,three:0,fw:0,gir:0,ud:0,pens:0,birdies:0,bogeyFreeRun:0,longMake:0,putts:0,one:0,dbl:0,trip:0,pars:0,parRun:0,birdRun:0,eagle:0,ace:0,backDbl:0,front:0,back:0,fNine:[0,0],bNine:[0,0]}; let run=0,prun=0,brun=0;
   const sg=roundSG(r,String(myHcp(r)));
-  r.holes.forEach((h,i)=>{ if(h.score==null) return; const p=Number(h.par),s=Number(h.score),pu=Number(h.putts||0); f.holes++; f.score+=s; f.par+=p;
+  r.holes.forEach((h,i)=>{ if(h.score==null) return; const p=Number(h.par),s=h.pickup?netDouble(h,r.hcp):Number(h.score),pu=Number(h.putts||0); f.holes++; f.score+=s; f.par+=p;
     if(pu>=3) f.three++; if(p>=4&&(h.teeLie==='fairway'||h.teeLie==='green')&&(h.teePen||'none')==='none') f.fw++;
     if(pu>0?(s-pu)<=p-2:s<=p-2) f.gir++; if(h.atg&&Number(h.atgShots||1)===1&&pu<=1) f.ud++;
     f.pens+=(h.teePen&&h.teePen!=='none'?1:0)+Number(h.penOther||0); if(s<p) f.birdies++;
@@ -669,7 +669,7 @@ function funStats(){
   const rs=realRounds(); const out=[]; if(!rs.length) return out;
   let pens=0,one=0,putted=0,made=0,longest=0,longR=null; const byPar={3:[0,0],4:[0,0],5:[0,0]}; const counts={}; const fb=[[0,0],[0,0]];
   rs.forEach(r=>{ const f=roundFacts(r); pens+=f.pens; if(f.longMake>longest){ longest=f.longMake; longR=r; }
-    r.holes.forEach((h,i)=>{ if(h.score==null) return; const p=Number(h.par),s=Number(h.score),pu=Number(h.putts||0); byPar[p]&&(byPar[p][0]+=s-p,byPar[p][1]++);
+    r.holes.forEach((h,i)=>{ if(h.score==null) return; const p=Number(h.par),s=h.pickup?netDouble(h,r.hcp):Number(h.score),pu=Number(h.putts||0); byPar[p]&&(byPar[p][0]+=s-p,byPar[p][1]++);
       const d=s-p; const nm=d<=-2?'Eagle or better':d===-1?'Birdie':d===0?'Par':d===1?'Bogey':d===2?'Double':'Triple or worse'; counts[nm]=(counts[nm]||0)+1;
       if(pu>0){ putted++; if(pu===1){ one++; if(!(h.assumed||[]).includes('fp')) made+=Number(h.fp||0); } }
       if(r.holes.length===18){ const half=i<9?0:1; fb[half][0]+=d; fb[half][1]++; } }); });
@@ -1288,9 +1288,12 @@ function vHole(){
     ${(h.assumed||[]).length?`<div class="assumenote">The dashed parts were filled in for you. Tap the right answer if a guess is off.</div>`:''}
     ${(h.unsure||[]).length?`<div class="flagnote">Claude had to guess the highlighted parts of this hole. Tap the right answer to confirm.</div>`:''}
 
-    <section id="sec-score" class="sec${uns(h,['score'])}"><div class="lab"><h3>Score</h3>${h.score!=null?`<span class="muted small">${names[String(h.score-par)]||''}</span>`:''}</div>
-      <div class="chips">${scores.map(s=>chip('score',s,s,Number(h.score)===s,names[String(s-par)])).join('')}${chip('score',par+5,(par+5)+'',Number(h.score)>=par+5,'or more')}</div>
-      ${Number(h.score)>=par+5?stepper('score',h.score):''}
+    <section id="sec-score" class="sec${uns(h,['score'])}${h.pickup?' pickedup':''}"><div class="lab"><h3>${h.pickup?'Shots before you picked up':'Score'}</h3>${h.pickup?`<span class="small pickcard">P · ${netDouble(h,r.hcp)} on your card</span>`:h.score!=null?`<span class="muted small">${names[String(h.score-par)]||''}</span>`:''}</div>
+      ${h.pickup?`<div class="chips">${Array.from({length:par+4},(_,i)=>i+1).map(s=>chip('score',s,s,Number(h.score)===s)).join('')}</div>
+      <span class="small muted">Your card gets net double bogey. Strokes gained counts the shots you played, right up to where you picked up.</span>`
+      :`<div class="chips">${scores.map(s=>chip('score',s,s,Number(h.score)===s,names[String(s-par)])).join('')}${chip('score',par+5,(par+5)+'',Number(h.score)>=par+5,'or more')}</div>
+      ${Number(h.score)>=par+5?stepper('score',h.score):''}`}
+      <button class="pickbtn ${h.pickup?'on':''}" data-act="set" data-field="pickup" data-val="${h.pickup?'0':'1'}">${h.pickup?'✓ Picked up · tap to undo':'Picked up?'}</button>
     </section>
 
     ${par>=4?`
@@ -1313,10 +1316,15 @@ function vHole(){
     </section>
 
     <section id="sec-putt" class="sec${uns(h,['putts','fp'])}${asm(h,['putts','fp'])}"><div class="lab"><h3>Putting</h3></div>
-      <div class="chips">${[0,1,2,3,4].map(p=>chip('putts',p,p,Number(h.putts)===p&&h.putts!=null,p===0?'holed off green':p===1?'putt':'putts')).join('')}</div>${derivedNote(h,'putts')}${h.atg&&Number(h.atgShots||1)===1&&h.putts!=null&&Number(h.putts)<=1?`<span class="savepill">✓ ${h.atgLie==='sand'?'Sand save':'Up and down'}</span>`:''}
+      <div class="chips">${[0,1,2,3,4].map(p=>chip('putts',p,p,Number(h.putts)===p&&h.putts!=null,p===0?(h.pickup?'none':'holed off green'):p===1?'putt':'putts')).join('')}</div>${derivedNote(h,'putts')}${h.atg&&Number(h.atgShots||1)===1&&h.putts!=null&&Number(h.putts)<=1?`<span class="savepill">✓ ${h.atgLie==='sand'?'Sand save':'Up and down'}</span>`:''}
       ${Number(h.putts)>0?`<div class="lab"><span class="small muted">First putt length (a pace is about ${isFt()?'3 feet':'a metre'})</span><span class="small muted">${isFt()?'feet':'metres'}</span></div>${distField('fp',isFt()?PUTT_FT:PUTT_M,puttU(),toShow('fp',h.fp),'First putt length')}${assumeHint(h,'fp')}`:''}${h.putts==null?assumeHint(h,'putts'):''}
     </section>
 
+    ${h.pickup?`<section id="sec-pick" class="sec pickedup"><div class="lab"><h3>Where you picked up</h3></div>
+      <div class="chips wide">${[['fairway','Fairway'],['rough','Rough'],['sand','Bunker'],['recovery','Trees'],['green','Green']].map(([k,l])=>chip('pickLie',k,l,h.pickLie===k)).join('')}</div>
+      ${h.pickLie?`<div class="lab"><span class="small muted">Distance to the hole</span><span class="small muted">${h.pickLie==='green'?(isFt()?'feet':'metres'):(isYd()?'yards':'metres')}</span></div>
+      <div class="chips">${(h.pickLie==='green'?(isFt()?[3,6,10,15,20,30,40,60]:[1,2,3,5,8,10,15,20]):[5,10,20,30,50,75,100,125,150,200]).map(v=>chip('pickDist',v,v,h.pickDist!=null&&Math.abs((h.pickLie==='green'?toShow('fp',h.pickDist):toShow('teeDist',h.pickDist))-v)<0.01)).join('')}</div>`:''}
+    </section>`:''}
     <section id="sec-pen" class="sec${uns(h,['penOther'])}"><div class="row between"><div><h3>Other penalty strokes</h3><span class="small muted">Water, OB or unplayable after the tee shot</span></div>${stepper('penOther',h.penOther||0)}</div></section>
 
   </div>`;
@@ -1404,6 +1412,15 @@ function roundFlags(r){
     const ask=(kind,text,opts)=>add(kind,'Missing',text,opts.map(([l,o])=>({l,f:set(o),chip:true})),true);
     // blanks: answered right here on the card
     if(h.score==null||h.score===''){ if(anyScore) ask('noscore','No score yet.',[par-1,par,par+1,par+2,par+3].map(v=>[String(v),{score:v}])); return; }
+    if(h.pickup){
+      let m=false;
+      if(par>=4&&!h.teeLie&&Number(h.score)>1){ ask('teeLie','Where did the tee shot finish?',LIES_TEE.map(([k,l])=>[l,{teeLie:k}])); m=true; }
+      if(!h.pickLie){ ask('pickLie','Where were you when you picked up?',[['fairway','Fairway'],['rough','Rough'],['sand','Bunker'],['recovery','Trees'],['green','Green']].map(([k,l])=>[l,{pickLie:k}])); m=true; }
+      else if(h.pickDist==null||h.pickDist===''){ const g=h.pickLie==='green'; ask('pickDist',`How far from the hole when you picked up? (${g?puttU():fullU()})`,(g?(isFt()?[3,6,10,15,20,30,40,60]:[1,2,3,5,8,10,15,20]):[5,10,20,30,50,75,100,125,150,200]).map(v=>[String(v),{pickDist:toStore(g?'fp':'teeDist',v)}])); m=true; }
+      if(m) return;
+      const sg=holeSG(h,String(myHcp(r))); if(!sg.ok&&sg.err) add('err','Missing detail',sg.err,[{l:'Open hole',go:i}]);
+      return;
+    }
     let miss=false;
     if(par>=4&&!h.teeLie){ ask('teeLie','Where did the tee shot finish?',LIES_TEE.map(([k,l])=>[l,{teeLie:k}])); miss=true; }
     else if(par>=4&&h.teeLie!=='green'&&(h.teeDist==null||h.teeDist==='')){ ask('teeDist',`How far was left after the tee shot? (${fullU()})`,teeChoices(h.len).map(v=>[String(v),{teeDist:toStore('teeDist',v)}])); miss=true; }
@@ -1457,7 +1474,7 @@ function vReview(){
   const r=S.round; if(!r){ S.view='home'; return vHome(); }
   const fl=roundFlags(r); S._fx=[];
   const done=r.holes.filter(h=>h.score!=null&&h.score!=='');
-  const score=done.reduce((a,h)=>a+Number(h.score),0), par=done.reduce((a,h)=>a+Number(h.par),0), tp=score-par;
+  const score=done.reduce((a,h)=>a+(h.pickup?netDouble(h,r.hcp):Number(h.score)),0), par=done.reduce((a,h)=>a+Number(h.par),0), tp=score-par;
   const n=fl.length, nMiss=fl.filter(f=>f.missing).length, resolved=(r.flagOk||[]).length+(r.flagFixed||0);
   return `<div class="top"><button class="btn ghost" data-act="backholes">← Holes</button><span class="brand">Check round</span><span></span></div>
   <div class="stack">
@@ -1496,7 +1513,7 @@ function vResults(){
     ${secHead('Hole by hole','Strokes gained on every hole')}
     <div class="card tbl"><table>
       <thead><tr><th>Hole</th><th>Par</th><th>Score</th><th>Tee</th><th>Appr</th><th>Short</th><th>Putt</th><th>Total</th></tr></thead>
-      <tbody>${r.holes.map((h,i)=>{ const s=per[i]; const c=v=>s.ok?`<td class="${cls(v)}">${f2(v)}</td>`:'<td>–</td>'; return `<tr><td>${h.n}</td><td>${h.par}</td><td>${h.score??'–'}</td>${Number(h.par)>=4?c(s.ott):'<td class="muted">·</td>'}${c(s.app)}${c(s.atg)}${c(s.putt)}${c(s.total)}</tr>`; }).join('')}
+      <tbody>${r.holes.map((h,i)=>{ const s=per[i]; const c=v=>s.ok?`<td class="${cls(v)}">${f2(v)}</td>`:'<td>–</td>'; return `<tr><td>${h.n}</td><td>${h.par}</td><td>${h.pickup?`<b class="pk">P</b> ${netDouble(h,r.hcp)}`:h.score??'–'}</td>${Number(h.par)>=4?c(s.ott):'<td class="muted">·</td>'}${c(s.app)}${c(s.atg)}${c(s.putt)}${c(s.total)}</tr>`; }).join('')}
       <tr class="tot"><td>Total</td><td>${t.par}</td><td>${t.score}</td><td class="${cls(t.ott)}">${f1(t.ott)}</td><td class="${cls(t.app)}">${f1(t.app)}</td><td class="${cls(t.atg)}">${f1(t.atg)}</td><td class="${cls(t.putt)}">${f1(t.putt)}</td><td class="${cls(t.total)}">${f1(t.total)}</td></tr></tbody>
     </table></div>
     <div class="row">
@@ -1583,7 +1600,7 @@ function deriveHole(h){
   const was=h.derived||{};
   Object.keys(was).forEach(f=>{ if(f==='atg'){ h.atg=false; h.atgShots=1; ['atgLie','atgDist'].forEach(x=>{ if((h.assumed||[]).includes(x)){ h[x]=null; } }); } else h[f]=null; });
   delete h.derived;
-  if(h.score==null||h.score==='') return;
+  if(h.score==null||h.score===''||h.pickup) return;
   const d={}, par=Number(h.par), score=Number(h.score);
   const parts=()=>{ const ott=par>=4?(h.teePen==='retee'?2:1):0, penTee=par>=4&&(h.teePen==='drop'||h.teePen==='retee')?1:0;
     return ott+penTee+(h.atg?Number(h.atgShots||1):0)+Number(h.penOther||0); };
@@ -1614,7 +1631,9 @@ function setField(f,raw){
   const h=hole(); let v=raw;
   if(['score','putts','atgShots','penOther'].includes(f)) v=raw===''||raw==null?null:Number(raw);
   if(['fp','teeDist','atgDist'].includes(f)) v=toStore(f,raw);
-  if(f==='atg') v=raw==='1'||raw===true;
+  if(f==='atg'||f==='pickup') v=raw==='1'||raw===true;
+  if(f==='pickDist') v=h.pickLie==='green'?toStore('fp',raw):toStore('teeDist',raw);
+  if(f==='pickLie'&&h.pickLie!==raw) h.pickDist=null;
   if(h.derived&&h.derived[f]){ delete h.derived[f]; if(!Object.keys(h.derived).length) delete h.derived; }
   if(f==='atg') h.atgSet=true;
   h[f]=v;
@@ -1624,6 +1643,8 @@ function setField(f,raw){
     if(h.teeLie&&h.teeLie!=='green'&&h.teeDist!=null&&h.teeDist<=30){ h.atg=true; h.atgLie=h.teeLie==='recovery'?'rough':h.teeLie; h.atgDist=h.teeDist; }
   }
   if(f==='atg'&&v&&!h.atgShots) h.atgShots=1;
+  if(f==='pickup'&&v&&(h.putts==null||(h.derived||{}).putts)){ if(h.derived) delete h.derived.putts; h.putts=0; }
+  if(f==='pickup'&&!v){ h.pickLie=null; h.pickDist=null; }
   deriveHole(h);
   if(S.smart){
     const p=Number(h.par);
