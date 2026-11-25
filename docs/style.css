@@ -554,3 +554,39 @@ h3{color:var(--accent);font-size:.86rem;font-weight:800;letter-spacing:.06em}
 .bars .bar:nth-child(1) span:first-child{color:var(--c-ott)}.bars .bar:nth-child(2) span:first-child{color:var(--c-app)}.bars .bar:nth-child(3) span:first-child{color:var(--c-atg)}.bars .bar:nth-child(4) span:first-child{color:var(--c-putt)}
 .muted{color:#4F5D55}
 .goal{background:#fff;border-radius:16px;padding:14px;margin-top:10px}
+
+/* My golf: Me */
+.top .gearbtn{margin-left:auto;background:none;border:0;color:var(--ink);padding:6px;cursor:pointer}
+.mecard .mehcp{display:block;font-size:2.8rem;line-height:1;margin:4px 0}
+.mestats{display:flex;gap:16px;text-align:center}.mestats b{display:block;font-size:1.4rem}.mestats span{font-size:.75rem;opacity:.85}
+.goalbar{height:8px;border-radius:99px;background:rgba(255,255,255,.25);margin:14px 0 6px;overflow:hidden}.goalbar div{height:100%;background:#F2C14E;border-radius:99px}
+.gapchart{display:grid;gap:6px}.gaprow{display:grid;grid-template-columns:96px 1fr 38px;align-items:center;gap:8px;font-size:.85rem}.gaprow b{text-align:right}
+.gapbar{height:12px;background:var(--soft);border-radius:99px;overflow:hidden}.gapbar div{height:100%;border-radius:99px;background:var(--accent)}
+.gapbar.rounds div{background:#2E7D57}.gapbar.typical div{background:#B8C4BC}
+.lg{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;background:var(--accent);vertical-align:-1px}.lg.rounds{background:#2E7D57}.lg.typical{background:#B8C4BC}
+.courselist{padding:4px 14px}.courserow{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.courserow:last-child{border:0}.courserow>div{display:flex;flex-direction:column}.courserow .cr{text-align:right}.courserow .cr b{font-size:1.25rem}
+.cabinet{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center}.trophy .cm svg{width:38px;height:38px}.trophy b{display:block;font-size:.7rem;line-height:1.2}
+
+.mecard .sharebtn{margin-top:14px;width:100%;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3)}
+.pbgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pbtile{display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--card,#fff);border:1px solid var(--line);border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer;font:inherit;color:inherit}
+.pbtile>span:first-child{font-size:.78rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}.pbtile b{font-size:1.6rem}
+button.courserow{width:100%;background:none;border:0;border-bottom:1px solid var(--line);font:inherit;color:inherit;text-align:left;cursor:pointer;gap:10px}
+button.courserow>i{color:var(--muted);font-style:normal;font-size:1.3rem}
+.holegrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.hn{display:flex;flex-direction:column;align-items:center;border-radius:10px;padding:6px 2px;background:var(--soft)}
+.hn span{font-size:.7rem;color:var(--muted)}.hn b{font-size:1.05rem}.hn small{font-size:.65rem;color:var(--muted)}
+.hn.good{background:#D6EEDF}.hn.ok{background:#EEF3EF}.hn.meh{background:#FBEBC8}.hn.bad{background:#F8D5CF}
+.lg.hgood{background:#D6EEDF}.lg.hok{background:#EEF3EF;border:1px solid var(--line)}.lg.hmeh{background:#FBEBC8}.lg.hbad{background:#F8D5CF}
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:10px}.twocol .card{margin:0}
+.subtabs button{white-space:nowrap}
+.tiles.three{grid-template-columns:repeat(3,1fr)}
+.baglist{padding:6px 16px 12px}.bagrow{display:grid;grid-template-columns:1fr 64px 52px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.bagrow:last-of-type{border-bottom:0}.bagrow>*:not(:first-child){text-align:right}.bagrow small{display:block;font-size:.72rem;color:var(--muted)}
+.bagrow.head{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding-top:4px}
+.bagrow b{font-size:1.05rem}.gapflag{color:#B7791F;font-weight:700}.baglist .flagnote{margin-top:10px}
+.teeclub{display:flex;flex-direction:column;gap:6px;padding:4px 0 10px;border-bottom:1px solid var(--line)}.teeclub:last-of-type{border-bottom:0}
+.fwbar{display:flex;height:26px;border-radius:8px;overflow:hidden;background:var(--soft);font-size:.75rem;font-weight:700}
+.fwbar>div{display:flex;align-items:center;justify-content:center;min-width:0}.fwbar .fw{background:#2E7D57;color:#fff}.fwbar .ms{background:#D9DFDB;color:#3a4a40}
+.baglist .bagrow{grid-template-columns:1fr 70px 72px}
+.lrlab{display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);margin-top:-2px}
