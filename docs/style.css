@@ -180,3 +180,18 @@ details.assume b{color:var(--ink);font-weight:600}
 .plan li{padding-bottom:12px;border-bottom:1px solid var(--line)}
 .plan li:last-child{border-bottom:0;padding-bottom:0}
 .tag.extra{background:var(--surface);border-color:var(--line);color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500}
+/* drill pop-up */
+body.noscroll{overflow:hidden}
+.modalback{position:fixed;inset:0;background:rgba(10,20,15,.55);z-index:40}
+.modal{position:fixed;z-index:41;left:50%;bottom:0;transform:translateX(-50%);width:min(560px,100%);max-height:92vh;overflow:auto;background:var(--surface);border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+.drillanim{display:grid;gap:6px;justify-items:center;background:var(--bg);border-radius:16px;padding:12px}
+.drillanim svg{width:100%;max-width:300px;height:auto}
+.drillanim .small{text-align:center;min-height:2.6em}
+.steps{margin:0;padding-left:20px;display:grid;gap:8px}
+.scorebox{display:grid;gap:2px;background:var(--accent-soft);border-radius:12px;padding:10px 12px}
+.drillbtn{display:grid;gap:4px;width:100%;text-align:left;background:none;border:0;padding:0;color:inherit}
+.small.link{color:var(--accent);font-weight:600}
+.library summary{display:grid;gap:2px;cursor:pointer;list-style:none}
+.library summary::-webkit-details-marker{display:none}
+.liblist{display:grid;gap:6px;margin-top:6px}
+.libitem{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 12px;color:inherit}
