@@ -850,10 +850,10 @@ function homeTiles(){
   const B=S.block, cur=B&&B.sessions.find(x=>!x.done);
   const plan=cur?`<button class="hometile" data-act="imptab" data-val="plan"><span class="eb">Next practice</span><b>${esc(moverTitle(cur.k))}</b><span class="small muted">${cur.day?dayName(cur.day)+' · ':''}${B.mins} min</span></button>`
     :`<button class="hometile" data-act="${blockLeaks().length?'wizopen':'imptab'}" data-val="plan"><span class="eb">4-week plan</span><b>Build a plan around your leaks</b><span class="small muted">Drills, tests and targets</span></button>`;
-  let comp=`<button class="hometile" data-act="imptab" data-val="compete"><span class="eb">This week's challenge</span><b>Weekly tests</b><span class="small muted">See how you compare</span></button>`;
+  let comp=`<button class="hometile" data-act="mytab" data-val="compete"><span class="eb">This week's challenge</span><b>Weekly tests</b><span class="small muted">See how you compare</span></button>`;
   if(uid&&S.comp.state==='idle') setTimeout(()=>loadComp(),0);
   if(uid&&S.comp.state==='ok'&&S.comp.tests.length){ const f=featuredFor(thisWeek()), band=myBand(), all=bestBy(S.comp.week.filter(r=>r.test_id===f.id&&(!r.flagged||r.user_id===uid))), mine=all.find(r=>r.user_id===uid), br=all.filter(r=>levelOf(r.hcp??30).name===band), bi=br.findIndex(r=>r.user_id===uid);
-    comp=`<button class="hometile" data-act="imptab" data-val="compete"><span class="eb">This week's challenge</span><b>${esc(f.name)}</b><span class="small muted">${mine?(bi>=0&&br.length>1?`You're top ${Math.max(1,Math.round((bi+1)/br.length*100))}% · ${mine.points} pts`:`Your best: ${mine.points} pts`):'Not played yet'}</span></button>`; }
+    comp=`<button class="hometile" data-act="mytab" data-val="compete"><span class="eb">This week's challenge</span><b>${esc(f.name)}</b><span class="small muted">${mine?(bi>=0&&br.length>1?`You're top ${Math.max(1,Math.round((bi+1)/br.length*100))}% · ${mine.points} pts`:`Your best: ${mine.points} pts`):'Not played yet'}</span></button>`; }
   return `<div class="hometiles">${plan}${comp}</div>`;
 }
 function vHome(){
@@ -892,8 +892,9 @@ function vPath(rounds,isExample){
 }
 
 // ----- stats -----
-const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['disp','Dispersion'],['detail','Deep dive'],['badges','Badges']]);
-const whoSeg=()=>subTabs('mytab',S.myTab||'me',[['me','My game'],['mates','Friends']]);
+const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['disp','Dispersion'],['detail','Deep dive']]);
+const whoSeg=()=>subTabs('mytab',S.myTab||'me',[['me','Me'],['badges','Badges'],['compete','Compete'],['mates','Friends']]);
+const GEAR='<button class="gearbtn" data-act="mytab" data-val="settings" aria-label="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>';
 function bounceHtml(rs){
   const bb=bounceBack(rs), pct=bb.blow?Math.round(bb.ok/bb.blow*100):null;
   return `<div class="card stack">${bb.blow?`<div class="row between" style="flex-wrap:nowrap"><span>After a double or worse, you made ${myHcp(null)>18?'double':'bogey'} or better on the next hole</span><b class="bigsg ${pct>=60?'pos':pct<40?'neg':''}" style="font-size:2.4rem">${pct}%</b></div>
@@ -1042,7 +1043,6 @@ function vStats(){
   const top=`<div class="top"><span class="brand">Stats</span>${sampleTag(ex)}</div>${statsTabs()}`;
   const nOut=realRounds().length-real.length, tough=nOut?`<span class="small muted">${nOut} round${nOut>1?'s':''} left out of these numbers. Open a round to change it.</span>`:'';
   if(S.statsTab==='disp') return `${top}<div class="stack">${vDispersion(ex?[]:rs)}</div>`;
-  if(S.statsTab==='badges') return `${top}<div class="stack">${ex?`<div class="card muted">Badges and fun stats start once you've saved a round.</div>`:badgesHtml()}</div>`;
   const base=fixedBase();
   if(S.statsTab==='detail'){
     const courses=[...new Set(rs.map(r=>r.course))];
@@ -1112,7 +1112,7 @@ function mateRows(){
 }
 const nameOf=id=>id===uid?'You':(S.names[id]||'A friend');
 function vMates(){
-  if(!uid) return `<div class="top"><span class="brand">My golf</span></div><div class="stack">${whoSeg()}<div class="card stack"><h2>Compare with your friends</h2><p class="muted" style="margin:0">Sign in to compare with your friends. Your rounds still save on this phone.</p></div></div>`;
+  if(!uid) return `<div class="top"><span class="brand">My golf</span>${GEAR}</div><div class="stack">${whoSeg()}<div class="card stack"><h2>Compare with your friends</h2><p class="muted" style="margin:0">Sign in to compare with your friends. Your rounds still save on this phone.</p></div></div>`;
   const rows=mateRows().sort((a,b)=>b.total-a.total);
   const crowns=CATS.map(([k,l])=>{ const best=[...rows].sort((a,b)=>b[k]-a[k])[0]; return best?{l:{ott:'Best driver',app:'Best iron player',atg:'Best short game',putt:'Best putter'}[k],who:nameOf(best.id),v:best[k]}:null; }).filter(Boolean);
   const weekAgo=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
@@ -1138,10 +1138,12 @@ function seg(act,cur,opts){ return `<div class="seg">${opts.map(([k,l])=>`<butto
 function vMyGolf(){
   const hc=S.hcp!=null?S.hcp:10, u=fullU();
   if(S.myTab==='mates') return vMates();
+  if(S.myTab==='compete') return `<div class="top"><span class="brand">My golf</span>${GEAR}</div><div class="stack">${whoSeg()}${vCompete()}</div>`;
+  if(S.myTab==='badges') return `<div class="top"><span class="brand">My golf</span>${GEAR}</div><div class="stack">${whoSeg()}${realRounds().length?badgesHtml():`<div class="card muted">Badges and fun stats start once you've saved a round.</div>`}</div>`;
+  if(S.myTab!=='settings') return S.myCourse?vCourseNotes(S.myCourse):vMe();
   return `
-  <div class="top"><span class="brand">My golf</span></div>
+  <div class="top"><button class="linkbtn" data-act="mytab" data-val="me">‹ Back</button><span class="brand">Settings</span></div>
   <div class="stack">
-    ${whoSeg()}
     <div class="card stack">
       <h3>My game</h3>
       <div class="row" style="flex-wrap:nowrap">
@@ -1573,7 +1575,12 @@ function sessionDates(B){
   return map;
 }
 async function savePushRow(sub){
-  const B=S.block; if(!sb||!uid||!B) return 'Sign in to get reminders.';
+  const B=S.block; if(!sb||!uid) return 'Sign in to get reminders.';
+  if(!B){ const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'Australia/Adelaide';
+    const cur=await sb.from('push_reminders').select('subs').eq('user_id',uid).maybeSingle();
+    const subs=((cur.data&&cur.data.subs)||[]).filter(x=>!sub||x.endpoint!==sub.endpoint); if(sub) subs.push(sub.toJSON?sub.toJSON():sub);
+    const r=cur.data?await sb.from('push_reminders').update({subs,tz,updated_at:new Date().toISOString()}).eq('user_id',uid):await sb.from('push_reminders').insert({user_id:uid,subs,tz,enabled:false});
+    return r.error?'Couldn\'t save reminders. Try again.':null; }
   const map=sessionDates(B), ends=Object.keys(map).sort().pop()||null, tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'Australia/Adelaide';
   const cur=await sb.from('push_reminders').select('subs').eq('user_id',uid).maybeSingle();
   const subs=((cur.data&&cur.data.subs)||[]).filter(x=>!sub||x.endpoint!==sub.endpoint); if(sub) subs.push(sub.toJSON?sub.toJSON():sub);
@@ -1595,12 +1602,13 @@ async function turnOnReminders(quiet){
     const reg=await navigator.serviceWorker.ready;
     const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(VAPID_PUBLIC)});
     if(B&&B.remind!=='off'){ B.remind=true; saveBlock(); const e=await savePushRow(sub); if(!quiet) S.remindMsg=e||''; }
+    else if(!B) await savePushRow(sub);
   }catch(e){ if(!quiet) S.remindMsg='Couldn\'t turn on notifications on this device.'; }
   render();
 }
 function askNotifHtml(){
   return `<div class="modalback" data-act="notifno"></div><div class="modal cele" role="dialog" aria-modal="true" aria-labelledby="ntitle">
-    <div class="celetop"><div class="bigmedal" style="font-size:3rem;line-height:1">🔔</div><h2 id="ntitle">Never miss a practice day</h2><span class="celesub">Turn on notifications for a gentle nudge on your practice days</span></div>
+    <div class="celetop"><div class="bigmedal" style="font-size:3rem;line-height:1">🔔</div><h2 id="ntitle">Never miss a practice day</h2><span class="celesub">Turn on notifications for a gentle nudge on your practice days, and a Sunday check-in to log your weekend rounds</span></div>
     <div class="stack" style="gap:8px"><button class="btn big primary" data-act="notifyes">Allow notifications</button><button class="btn ghost" data-act="notifno">Not now</button></div></div>`;
 }
 const fmtTime=t=>{ const [h,m]=t.split(':').map(Number); return `${(h%12)||12}:${String(m).padStart(2,'0')} ${h<12?'am':'pm'}`; };
@@ -1734,11 +1742,10 @@ function vImprove(){
   return `
   <div class="top"><span class="brand">Improve</span></div>
   <div class="stack">
-    ${subTabs('imptab',S.impTab||'overview',[['overview','Overview'],['plan','4-week plan'],['drills','Drills'],['compete','Compete']])}
+    ${subTabs('imptab',S.impTab||'overview',[['overview','Overview'],['plan','Practice plan'],['drills','Drills']])}
     ${(S.impTab||'overview')==='overview'?`${heroImprove()}${planCta()}${goalsHtml()}`:''}
-    ${S.impTab==='plan'?blockHtml():''}
-    ${S.impTab==='drills'?`${S.block?'':planHtml()}${libraryHtml()}`:''}
-    ${S.impTab==='compete'?vCompete():''}
+    ${S.impTab==='plan'?`${blockHtml()}${S.oneOff?planHtml():`<button class="card ctacard" data-act="oneoff"><span><span class="eyebrow">Just practising today?</span><b>Build a one-off session</b><span class="small muted">Pick your time and where you are. No plan needed.</span></span><i>›</i></button>`}`:''}
+    ${S.impTab==='drills'?libraryHtml():''}
     ${sample?'':'<!--'}<div class="card stack">
       <h2>Where should I miss?</h2>
       <p class="muted" style="margin:0">Take a photo of the shot in front of you. Claude looks at the hazards and tells you where to aim and which side is the safe miss.</p>
@@ -2200,10 +2207,10 @@ function vResults(){
 // ----- share card -----
 function vShare(){
   return `
-  <div class="top"><button class="btn ghost" data-act="backresults">← Round</button><span class="brand">Share card</span><span></span></div>
+  <div class="top">${S.shareKind==='player'?'<button class="btn ghost" data-act="mytab" data-val="me">← My golf</button>':'<button class="btn ghost" data-act="backresults">← Round</button>'}<span class="brand">Share card</span><span></span></div>
   <div class="stack sharecard">
     ${S.shareImg?`<img src="${S.shareImg}" alt="Round summary card">`:'<div class="card"><span class="spinner"></span> Drawing your card…</div>'}
-    <div class="row">${downloads?`<button class="btn primary" data-act="savecard">Save image</button>`:''}<button class="btn" data-act="copysummary">Copy summary text</button></div>
+    <div class="row">${S.shareImg&&navigator.share&&navigator.canShare?`<button class="btn primary" data-act="sharenative">Share</button>`:''}${downloads?`<button class="btn ${navigator.share?'':'primary'}" data-act="savecard">Save image</button>`:''}${S.shareKind==='player'?'':`<button class="btn" data-act="copysummary">Copy summary text</button>`}</div>
     <span class="small muted">${S.shareMsg?esc(S.shareMsg):downloads?'Save it, then post it in the group chat.':'On your phone, press and hold the image to save or share it.'}</span>
   </div>`;
 }
@@ -2387,7 +2394,7 @@ document.addEventListener('click',e=>{
       const [obj,key,max]=store; const cur=obj[key]; const start=cur==null?(k.startsWith('d:')?((S.block.sessions[Number(k.split(':')[1])].items.find(it=>it.id===k.split(':')[2])||{}).target||0):Math.round(max/2)):cur;
       obj[key]=Math.max(0,Math.min(max,cur==null?start:start+d)); saveBlock(); break; }
     case 'closecele': S.celebrate=null; break;
-    case 'celebadges': S.celebrate=null; S.view='stats'; S.statsTab='badges'; window.scrollTo(0,0); break;
+    case 'celebadges': S.celebrate=null; S.view='mygolf'; S.myTab='badges'; S.myCourse=null; window.scrollTo(0,0); break;
     case 'closebadge': S.badgeOpen=null; break;
     case 'planshuffle': S.planSeed=(S.planSeed||1)+1; lsSet('sg.planSeed',S.planSeed); break;
     case 'planextra': { const e=S.plan.extra||(S.plan.extra=[]), i=e.indexOf(val); if(i>=0) e.splice(i,1); else e.push(val); lsSet('sg.plan',S.plan); saveProfile(); break; }
@@ -2397,7 +2404,10 @@ document.addEventListener('click',e=>{
     case 'askdemo': S.confirmDemo=true; break;
     case 'statswho': case 'statstab': S.statsTab=val; window.scrollTo(0,0); break;
     case 'learntab': S.learnTab=val; window.scrollTo(0,0); break;
-    case 'mytab': S.myTab=val; if(val==='mates'&&uid&&!S.mates) loadMates(); window.scrollTo(0,0); break;
+    case 'oneoff': S.oneOff=true; break;
+    case 'coursenotes': S.myCourse=val; window.scrollTo(0,0); break;
+    case 'playercard': S.shareKind='player'; S.view='share'; S.shareImg=null; S.shareMsg=''; render(); drawPlayerCard().then(u=>{ S.shareImg=u; if(S.view==='share') render(); }).catch(()=>{ S.shareMsg="Couldn't draw the card."; render(); }); window.scrollTo(0,0); return;
+    case 'mytab': S.view='mygolf'; S.myTab=val; S.myCourse=null; if(val==='mates'&&uid&&!S.mates) loadMates(); window.scrollTo(0,0); break;
     case 'scond': { const c=S.setup.cond||(S.setup.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); break; }
     case 'rexclude': case 'rwhy': { const r=S.viewing||S.round; if(a==='rexclude'){ r.excluded=!r.excluded; if(!r.excluded) delete r.excludeWhy; } else r.excludeWhy=r.excludeWhy===val?undefined:val; if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
     case 'rcond': { const r=S.viewing||S.round; const c=r.cond||(r.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
@@ -2458,9 +2468,10 @@ document.addEventListener('click',e=>{
     case 'refreshmates': loadMates(); return;
     case 'caddie': askCaddie(); return;
     case 'sharing': toggleSharing(); return;
-    case 'sharecard': S.shareFrom=S.viewing; S.view='share'; S.shareImg=null; S.shareMsg=''; render(); drawCard().then(u=>{ S.shareImg=u; if(S.view==='share') render(); }).catch(()=>{ S.shareMsg="Couldn't draw the card. Use Copy summary text instead."; render(); }); window.scrollTo(0,0); return;
+    case 'sharecard': S.shareKind='round'; S.shareFrom=S.viewing; S.view='share'; S.shareImg=null; S.shareMsg=''; render(); drawCard().then(u=>{ S.shareImg=u; if(S.view==='share') render(); }).catch(()=>{ S.shareMsg="Couldn't draw the card. Use Copy summary text instead."; render(); }); window.scrollTo(0,0); return;
     case 'backresults': S.view='results'; S.viewing=S.shareFrom||null; break;
-    case 'savecard': if(downloads&&S.shareImg){ const r=S.viewing||S.round; fetch(S.shareImg).then(x=>x.blob()).then(blob=>downloads.save({filename:`round-${(r.date||'')}.png`,data:blob})).then(()=>{ S.shareMsg='Saved.'; render(); }).catch(()=>{ S.shareMsg='Not saved. On your phone, press and hold the image instead.'; render(); }); } return;
+    case 'savecard': if(downloads&&S.shareImg){ const r=S.viewing||S.round; fetch(S.shareImg).then(x=>x.blob()).then(blob=>downloads.save({filename:S.shareKind==='player'?'player-card.png':`round-${((r||{}).date||'')}.png`,data:blob})).then(()=>{ S.shareMsg='Saved.'; render(); }).catch(()=>{ S.shareMsg='Not saved. On your phone, press and hold the image instead.'; render(); }); } return;
+    case 'sharenative': fetch(S.shareImg).then(x=>x.blob()).then(blob=>{ const f=new File([blob],S.shareKind==='player'?'player-card.png':'round.png',{type:'image/png'}); return navigator.canShare({files:[f]})?navigator.share({files:[f]}):Promise.reject(); }).catch(()=>{}); return;
     case 'copysummary': { const r=S.viewing||S.round; navigator.clipboard.writeText(roundSummaryText(r)).then(()=>{ S.shareMsg='Copied. Paste it into the group chat.'; render(); }).catch(()=>{ S.shareMsg="Couldn't copy here. "+roundSummaryText(r); render(); }); return; }
     case 'mic': toggleMic(); return;
     case 'parse': parseTalk(); return;
@@ -2649,7 +2660,7 @@ async function onSession(session){
   if(uid){ if(S.view==='auth'){ S.view='home'; }
     if(notifState()==='ask'&&isStandalone()&&!lsGet('sg.notifAsked',false)) S.askNotif=true;
     render(); loadAll();
-    if(notifState()==='on'&&S.block&&S.block.remind!=='off') turnOnReminders(true); }
+    if(notifState()==='on'&&(!S.block||S.block.remind!=='off')) turnOnReminders(true); }
   else if(CONFIGURED&&!lsGet('sg.offline',false)){ S.view='auth'; render(); }
 }
 if(CONFIGURED&&window.supabase){
@@ -2663,3 +2674,155 @@ if(/[?&]view=improve/.test(location.search)){ S.view='improve'; S.impTab='plan';
 // Lock the screen to app-style behaviour: no pinch or double-tap zoom, only scrolling and taps.
 ['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
 document.addEventListener('touchmove',e=>{ if(e.touches&&e.touches.length>1) e.preventDefault(); },{passive:false});
+
+// ================= My golf: Me =================
+function vMe(){
+  const rs=chrono(realRounds()), stat=chrono(statRounds()), u=fullU();
+  const tot=r=>r.holes.reduce((a,h)=>a+(Number(h.score)||0),0), full=r=>r.holes.length>=18&&r.holes.every(h=>h.score);
+  // player card
+  const hs=rs.map(r=>Number(myHcp(r))), start=hs.length?hs[0]:S.hcp, now=S.hcp!=null?S.hcp:start, goal=S.goal!=null?S.goal:goalHcp();
+  const pct=start!=null&&start!==goal?Math.max(0,Math.min(1,(start-now)/(start-goal))):0;
+  const last10=stat.slice(-10); const pl=last10.length?(()=>{ const o=snap(last10,'me'), h=last10.reduce((a,r)=>a+Number(myHcp(r)),0)/last10.length; return Math.round(Math.max(-5,h-hcpDrop(o.total))*10)/10; })():null;
+  const card=`<div class="hero mecard">
+    <div class="row between" style="flex-wrap:nowrap"><div><span class="eyebrow">${esc(me.name||'Your profile')}</span><b class="mehcp num">${fmtHcp(now)}</b><span class="small" style="opacity:.85">Handicap · goal ${fmtHcp(goal)}</span></div>
+      <div class="mestats"><div><b class="num">${pl!=null?fmtHcp(pl):'–'}</b><span>Playing to</span></div><div><b class="num">${rs.length}</b><span>Rounds</span></div></div></div>
+    <div class="goalbar"><div style="width:${Math.round(pct*100)}%"></div></div>
+    <div class="row between small" style="opacity:.85"><span>Started at ${fmtHcp(start)}</span><span>${pct>=1?'Goal reached!':`${Math.max(0,now-goal).toFixed(1)} to go`}</span></div>
+    ${rs.length?`<button class="btn sharebtn" data-act="playercard">Share my player card</button>`:''}
+  </div>`;
+  // handicap journey
+  const journey=hs.length>=2?`${secHead('Handicap journey','The handicap you had at each round')}<div class="card">${hcpLine(rs)}</div>`:'';
+  // bag gapping
+  const hc=now!=null?now:10, all=BAG.map(([k,l])=>({k,l,...clubDist(k,hc)})), known=all.filter(c=>c.src!=='typical'), clubs=known.length>=4?known:all; // once they've filled in their bag, clubs left blank are treated as not in the bag
+  const mx=Math.max(...clubs.map(c=>c.m)); const gaps=[];
+  clubs.forEach((c,i)=>{ const n=clubs[i+1]; if(n&&c.src!=='typical'&&n.src!=='typical'){ const g=c.m-n.m; if(g>=22) gaps.push(`${esc(c.l)} → ${esc(n.l.toLowerCase())}: ${lenShow(g)} ${u} gap`); else if(g<=4) gaps.push(`${esc(c.l)} and ${esc(n.l.toLowerCase())} go about the same distance`); } });
+  const bag=bagHtml(rs,clubs,clubs===all);
+  // courses
+  const by={}; rs.forEach(r=>{ const c=(r.course||'Unnamed course').replace(/ –.*$/,''); (by[c]=by[c]||[]).push(r); });
+  const cs=Object.entries(by).map(([c,a])=>{ const f=a.filter(full), sc=f.map(tot), sg=snap(a,'me').total; return {c,n:a.length,avg:sc.length?Math.round(sc.reduce((x,y)=>x+y,0)/sc.length):null,best:sc.length?Math.min(...sc):null,sg}; }).sort((a,b)=>b.n-a.n);
+  const courses=cs.length?`${secHead('My courses','Tap a course for your hole-by-hole notes')}
+    <div class="card courselist">${cs.map(x=>`<button class="courserow" data-act="coursenotes" data-val="${esc(x.c)}"><div><b>${esc(x.c)}</b><span class="small muted">${x.n} round${x.n>1?'s':''}${x.best!=null?` · best ${x.best}`:''}</span></div><div class="cr"><b class="num">${x.avg??'–'}</b><span class="small ${x.sg>=0?'pos':'neg'}">${x.sg>=0?'+':''}${x.sg.toFixed(1)} vs your hcp</span></div><i aria-hidden="true">›</i></button>`).join('')}</div>`:'';
+  const pbs=personalBests(rs);
+  // trophy cabinet (now its own tab)
+  let cab=''; if(0) try{ const A=achievements(), got=[...A.sg.filter(x=>x.when),...A.stats.filter(x=>x.now.when),...A.ms.filter(x=>x.when)], all=A.sg.length+A.stats.length+A.ms.length;
+    cab=`${secHead('Trophy cabinet',`${got.length} of ${all} badges at your level`,`<button class="linkbtn" data-act="celebadges">See all</button>`)}
+    <div class="card"><div class="cabinet">${got.slice(0,4).map(x=>`<div class="trophy"><span class="cm">${MEDAL}</span><b>${esc(x.t)}</b></div>`).join('')||'<span class="muted">Your first badge is a round away.</span>'}</div></div>`; }catch(e){}
+  // practice log
+  const B=S.block, done=B?B.sessions.filter(x=>x.done).length:0, mins=B?B.sessions.filter(x=>x.done).length*B.mins:0;
+  const log=`${secHead('Practice log','What you\'ve put in')}
+    <div class="tiles"><div class="tile"><span>Sessions done</span><b>${done}</b><span>${B?`of ${B.sessions.length} in your plan`:'No plan yet'}</span></div><div class="tile"><span>Time practised</span><b>${Math.floor(mins/60)}h ${mins%60}m</b><span>this plan</span></div><div class="tile"><span>Rounds this year</span><b>${rs.filter(r=>(r.date||'').slice(0,4)===today().slice(0,4)).length}</b><span>logged</span></div></div>`;
+  return `<div class="top"><span class="brand">My golf</span>${GEAR}</div>
+  <div class="stack">${whoSeg()}${card}${journey}${pbs}${courses}${bag}${log}</div>`;
+}
+function hcpLine(rs){
+  const v=rs.map(r=>Number(myHcp(r))), W=320,H=110,n=v.length, lo=Math.min(...v)-0.5, hi=Math.max(...v)+0.5;
+  const X=i=>14+i*(W-28)/(n-1), Y=x=>12+(x-lo)/(hi-lo)*(H-36);
+  const d=v.map((x,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(x).toFixed(1)}`).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Handicap over time"><path d="${d}" style="fill:none;stroke:var(--accent);stroke-width:3;stroke-linejoin:round"/>${v.map((x,i)=>`<circle cx="${X(i)}" cy="${Y(x)}" r="${i===n-1?5:3}" style="fill:var(--accent)"/>`).join('')}
+   <text x="${X(0)}" y="${Y(v[0])-8}" text-anchor="start">${fmtHcp(v[0])}</text><text x="${X(n-1)}" y="${Y(v[n-1])-9}" text-anchor="end" style="font-weight:700">${fmtHcp(v[n-1])}</text>
+   <text x="${X(0)}" y="${H-4}">${esc(shortDate(rs[0].date))}</text><text x="${X(n-1)}" y="${H-4}" text-anchor="end">${esc(shortDate(rs[n-1].date))}</text></svg>`;
+}
+
+const roundTot=r=>r.holes.reduce((a,h)=>a+(h.pickup?netDouble(h,r.hcp):Number(h.score)||0),0);
+const fullRound=r=>r.holes.length>=18&&r.holes.every(h=>h.score!=null);
+const courseName=r=>(r.course||'Unnamed course').replace(/ –.*$/,'');
+function personalBests(rs){
+  const f=rs.filter(fullRound); if(!f.length) return '';
+  const pick=(fn,better)=>{ let b=null; f.forEach(r=>{ const v=fn(r); if(v==null) return; if(!b||better(v,b.v)) b={v,r}; }); return b; };
+  const lo=(a,b)=>a<b, hi=(a,b)=>a>b;
+  const items=[
+    ['Lowest round',pick(roundTot,lo),v=>String(v)],
+    ['Best vs par',pick(r=>roundTot(r)-r.holes.reduce((a,h)=>a+Number(h.par),0),lo),v=>v===0?'E':(v>0?'+':'')+v],
+    ['Strokes gained',pick(r=>snap([r],'me').total,hi),v=>(v>=0?'+':'')+v.toFixed(1)],
+    ['Fewest putts',pick(r=>r.holes.reduce((a,h)=>a+Number(h.putts||0),0)||null,lo),v=>String(v)],
+    ['Most greens',pick(r=>famStats([r]).girN[0],hi),v=>`${v}/18`],
+    ['Most fairways',pick(r=>{ const n=famStats([r]).fwN; return n[1]?n[0]:null; },hi),(v,r)=>`${v}/${famStats([r]).fwN[1]}`],
+  ].filter(x=>x[1]);
+  return `${secHead('Personal bests','Your best full rounds. Tap one to open the round')}
+  <div class="pbgrid">${items.map(([l,b,fmt])=>`<button class="pbtile" data-act="open" data-id="${esc(b.r.id)}"><span>${l}</span><b class="num">${fmt(b.v,b.r)}</b><span class="small muted">${esc(courseName(b.r))} · ${esc(shortDate(b.r.date))}</span></button>`).join('')}</div>`;
+}
+function vCourseNotes(name){
+  const rs=chrono(realRounds()).filter(r=>courseName(r)===name);
+  const top=`<div class="top"><button class="linkbtn" data-act="mytab" data-val="me">‹ My golf</button><span class="brand">${esc(name)}</span></div>`;
+  if(!rs.length) return `${top}<div class="stack"><div class="card muted">No rounds here yet.</div></div>`;
+  const by={}; rs.forEach(r=>r.holes.forEach(h=>{ if(h.score==null) return; const k=Number(h.n); const s=h.pickup?netDouble(h,r.hcp):Number(h.score); (by[k]=by[k]||{par:Number(h.par),xs:[]}).xs.push(s); }));
+  const holes=Object.entries(by).map(([n,o])=>{ const avg=o.xs.reduce((a,b)=>a+b,0)/o.xs.length; return {n:Number(n),par:o.par,avg,d:avg-o.par,n0:o.xs.length,best:Math.min(...o.xs)}; }).sort((a,b)=>a.n-b.n);
+  const hard=[...holes].sort((a,b)=>b.d-a.d).slice(0,3), easy=[...holes].sort((a,b)=>a.d-b.d).slice(0,3);
+  const f=rs.filter(fullRound), sc=f.map(roundTot);
+  const byPar=[3,4,5].map(p=>{ const xs=holes.filter(h=>h.par===p); if(!xs.length) return null; const n=xs.reduce((a,h)=>a+h.n0,0), sum=xs.reduce((a,h)=>a+h.avg*h.n0,0); return [p,sum/n-p]; }).filter(Boolean);
+  const dd=d=>(d>=0?'+':'')+d.toFixed(1);
+  const cell=h=>{ const c=h.d<=0?'good':h.d<0.5?'ok':h.d<1?'meh':'bad'; return `<div class="hn ${c}"><span>${h.n}</span><b class="num">${h.avg.toFixed(1)}</b><small>Par ${h.par}</small></div>`; };
+  return `${top}<div class="stack">
+    <div class="tiles three"><div class="tile"><span>Rounds</span><b>${rs.length}</b><span>${esc(shortDate(rs[0].date))} – ${esc(shortDate(rs[rs.length-1].date))}</span></div><div class="tile"><span>Average</span><b>${sc.length?Math.round(sc.reduce((a,b)=>a+b,0)/sc.length):'–'}</b><span>full rounds</span></div><div class="tile"><span>Best</span><b>${sc.length?Math.min(...sc):'–'}</b><span>${sc.length?esc(shortDate(f[sc.indexOf(Math.min(...sc))].date)):''}</span></div></div>
+    ${secHead('Hole by hole','Your average score on each hole')}
+    <div class="card"><div class="holegrid">${holes.map(cell).join('')}</div>
+      <div class="row small muted" style="gap:12px;margin-top:10px"><span><i class="lg hgood"></i>Par or better</span><span><i class="lg hok"></i>Under +0.5</span><span><i class="lg hmeh"></i>+0.5 to +1</span><span><i class="lg hbad"></i>+1 or worse</span></div></div>
+    <div class="twocol">
+      <div class="card stack"><h3>Toughest for you</h3>${hard.map(h=>`<div class="row between" style="flex-wrap:nowrap"><span>Hole ${h.n}<br><span class="muted small">Par ${h.par}</span></span><b class="num neg">${dd(h.d)}</b></div>`).join('')}</div>
+      <div class="card stack"><h3>Your best holes</h3>${easy.map(h=>`<div class="row between" style="flex-wrap:nowrap"><span>Hole ${h.n}<br><span class="muted small">Par ${h.par}</span></span><b class="num ${h.d<=0?'pos':''}">${dd(h.d)}</b></div>`).join('')}</div>
+    </div>
+    ${byPar.length?`<div class="card"><h3>By par</h3>${byPar.map(([p,d])=>`<div class="setrow"><span>Par ${p}s</span><b class="num ${d<=0.3?'pos':d>0.8?'neg':''}">${dd(d)} a hole</b></div>`).join('')}</div>`:''}
+    ${secHead('Rounds here','')}
+    <div class="card homerounds">${[...rs].reverse().map(r=>`<button class="hrr" data-act="open" data-id="${esc(r.id)}"><span>${esc(shortDate(r.date))}</span><b class="num" style="margin-left:auto">${fullRound(r)?roundTot(r):r.holes.filter(h=>h.score!=null).length+' holes'}</b><i aria-hidden="true">›</i></button>`).join('')}</div>
+  </div>`;
+}
+async function drawPlayerCard(){
+  try{ await document.fonts.ready; }catch(e){}
+  const rs=chrono(realRounds()), st=chrono(statRounds()).slice(-10), now=S.hcp, goal=S.goal!=null?S.goal:goalHcp();
+  const o=st.length?snap(st,'me'):null, avgH=st.length?st.reduce((a,r)=>a+Number(myHcp(r)),0)/st.length:now, pl=o?Math.round(Math.max(-5,avgH-hcpDrop(o.total))*10)/10:null;
+  const f=rs.filter(fullRound), best=f.length?f.reduce((a,r)=>roundTot(r)<roundTot(a)?r:a):null, start=rs.length?Number(myHcp(rs[0])):now;
+  const c=document.createElement('canvas'); c.width=1080; c.height=1350; const g=c.getContext('2d');
+  const D='"Barlow Condensed", "Arial Narrow", sans-serif', B='Barlow, system-ui, sans-serif';
+  g.fillStyle='#13281c'; g.fillRect(0,0,1080,1350); g.fillStyle='#1c5a39'; g.fillRect(0,0,1080,14);
+  g.fillStyle='#e2b21c'; g.font=`700 34px ${D}`; g.fillText('STROKES GAINED · PLAYER CARD',80,110);
+  g.fillStyle='#ffffff'; g.font=`700 84px ${D}`; g.fillText((me.name||'My game').toUpperCase(),80,210);
+  g.fillStyle='#a9c2b2'; g.font=`500 34px ${B}`; g.fillText('Handicap',80,300); g.fillText('Playing to',560,300);
+  g.fillStyle='#ffffff'; g.font=`700 190px ${D}`; g.fillText(fmtHcp(now),70,470);
+  g.fillStyle='#4cc27a'; g.fillText(pl!=null?fmtHcp(pl):'–',550,470);
+  g.fillStyle='#a9c2b2'; g.font=`500 32px ${B}`; g.fillText(start!=null&&start>now?`Down from ${fmtHcp(start)} · goal ${fmtHcp(goal)}`:`Goal ${fmtHcp(goal)}`,80,530);
+  if(o){ const parts=CATS.map(([k,l])=>({k,l,v:o[k]})), max=Math.max(1,...parts.map(x=>Math.abs(x.v)));
+    g.fillStyle='#ffffff'; g.font=`700 44px ${D}`; g.fillText(`LAST ${st.length} ROUNDS VS MY HANDICAP`,80,640);
+    parts.forEach((x,i)=>{ const y=730+i*95, cx=640, half=230, w=Math.abs(x.v)/max*half;
+      g.fillStyle='#ffffff'; g.font=`500 38px ${B}`; g.fillText(x.l,80,y+14);
+      g.fillStyle='#1f3a2b'; g.fillRect(cx-half,y-12,half*2,30);
+      g.fillStyle=x.v>=0?'#4cc27a':'#f06b5b'; g.fillRect(x.v>=0?cx:cx-w,y-12,w,30);
+      g.fillStyle='#a9c2b2'; g.fillRect(cx-1,y-20,2,46);
+      g.fillStyle=x.v>=0?'#4cc27a':'#f06b5b'; g.font=`700 48px ${D}`; g.textAlign='right'; g.fillText(f1(x.v),1000,y+16); g.textAlign='left'; }); }
+  const tiles=[['Rounds',String(rs.length)],['Best round',best?String(roundTot(best)):'–'],['Best at',best?courseName(best):'–']];
+  tiles.forEach(([l,v],i)=>{ const x=80+i*320; g.fillStyle='#1f3a2b'; roundRect(g,x,1110,290,150,18); g.fillStyle='#a9c2b2'; g.font=`500 30px ${B}`; g.fillText(l,x+28,1160); g.fillStyle='#ffffff'; g.font=`700 ${i===2?40:64}px ${D}`; wrapText(g,v,x+28,i===2?1215:1232,240,42); });
+  return c.toDataURL('image/png');
+}
+
+// ---- My bag: tee accuracy by club, approach proximity by club ----
+const TEE_NAMES={driver:'Driver','3wood':'3 wood',hybrid:'Hybrid',longiron:'Long iron',iron:'Iron'};
+function bagHtml(rs,clubs,typical){
+  const u=fullU(), pct=(a,b)=>b?Math.round(a/b*100):0;
+  // tee shots on par 4s and 5s
+  const tee={}; let anyClub=false;
+  rs.forEach(r=>r.holes.forEach(h=>{ if(Number(h.par)<4||!h.teeLie||h.teeLie==='green') return; const k=h.teeClub||'all'; if(h.teeClub) anyClub=true;
+    const o=tee[k]=tee[k]||{n:0,fw:0,l:0,r:0,pen:0,d:[]}; o.n++;
+    if(h.teeLie==='fairway'&&(h.teePen||'none')==='none') o.fw++; else if(h.teeSide==='left') o.l++; else if(h.teeSide==='right') o.r++;
+    if((h.teePen||'none')!=='none') o.pen++;
+    if(h.teeDist!=null&&h.len&&h.teePen!=='retee') o.d.push(Number(h.len)-Number(h.teeDist)); }));
+  const keys=anyClub?Object.keys(TEE_NAMES).filter(k=>tee[k]&&tee[k].n>=2):(tee.all?['all']:[]);
+  const teeRow=k=>{ const o=tee[k], fw=pct(o.fw,o.n), l=pct(o.l,o.n), r=pct(o.r,o.n), avg=o.d.length?Math.round(o.d.reduce((a,b)=>a+b,0)/o.d.length):null;
+    const lean=o.l+o.r>=3&&Math.max(o.l,o.r)>=2*Math.min(o.l,o.r)?(o.l>o.r?'Misses mostly left':'Misses mostly right'):o.l+o.r?'Misses both ways':'';
+    return `<div class="teeclub"><div class="row between" style="flex-wrap:nowrap"><b>${k==='all'?'All tee shots':TEE_NAMES[k]}</b><span class="small muted">${o.n} shots${avg?` · ${lenShow(avg)} ${u}`:''}</span></div>
+      <div class="fwbar"><div class="ms" style="width:${l}%">${l>=12?l+'%':''}</div><div class="fw" style="width:${fw}%">${fw>=12?fw+'%':''}</div><div class="ms" style="width:${r}%">${r>=12?r+'%':''}</div></div>
+      <div class="lrlab"><span>Left miss</span><span>Fairway</span><span>Right miss</span></div>
+      <span class="small"><b>${fw}% fairways</b>${lean?' · '+lean.toLowerCase():''}${o.pen?` · ${o.pen} penalt${o.pen>1?'ies':'y'}`:''}</span></div>`; };
+  const teeCard=keys.length?`<div class="card stack"><h3>Off the tee</h3>${keys.map(teeRow).join('')}
+    ${anyClub?'':`<div class="row between" style="flex-wrap:nowrap;gap:10px"><span class="small muted">Turn on tee club tracking to see this for each club, so you know when driver is worth it.</span><button class="btn small" data-act="toggle" data-val="clubs">Turn on</button></div>`}</div>`:'';
+  // approaches: matched to the closest club by distance
+  const irons=clubs.filter(c=>!['driver','3wood'].includes(c.k)), ap={};
+  rs.forEach(r=>r.holes.forEach(h=>{ const par=Number(h.par); const d=par===3?Number(h.len):(par===4&&h.teeLie&&h.teeLie!=='green'&&h.teeLie!=='recovery'&&(h.teePen||'none')==='none'?Number(h.teeDist):null); if(!d||d<40) return;
+    const c=irons.reduce((a,b)=>Math.abs(b.m-d)<Math.abs(a.m-d)?b:a,irons[0]); if(!c||Math.abs(c.m-d)>25) return;
+    const on=!h.atg&&h.fp!=null, ft=on?Number(h.fp)/FT:(h.atg&&Number(h.atgDist)>0?Number(h.atgDist)/FT:null);
+    const o=ap[c.k]=ap[c.k]||{n:0,on:0,ft:[]}; o.n++; if(on) o.on++; if(ft!=null) o.ft.push(ft); }));
+  const aRows=irons.filter(c=>ap[c.k]&&ap[c.k].n>=2).map(c=>{ const o=ap[c.k], prox=o.ft.length?Math.round(o.ft.reduce((a,b)=>a+b,0)/o.ft.length):null;
+    return `<div class="bagrow"><span>${esc(c.l)}<small>${lenShow(c.m)} ${u} · ${o.n} shots</small></span><b class="num">${pct(o.on,o.n)}%</b><b class="num">${prox!=null?prox+' ft':'–'}</b></div>`; });
+  const apCard=aRows.length?`<div class="card baglist"><h3 style="margin:8px 0 2px">Approach shots</h3><div class="bagrow head"><span>Club</span><span>Greens</span><span>To hole</span></div>${aRows.join('')}
+    <p class="small muted" style="margin:10px 0 0">Each approach is matched to the club you'd hit from that distance. "To hole" is how far from the hole you finished, in feet.</p></div>`:'';
+  const edit=`<button class="linkbtn" data-act="mytab" data-val="settings">Edit distances</button>`;
+  return `${secHead('My bag',typical?'Using typical distances for your handicap. Add your own for better matching':'How each club is performing',edit)}${teeCard}${apCard}${!teeCard&&!apCard?'<div class="card muted">Log a few rounds and this fills in.</div>':''}`;
+}
