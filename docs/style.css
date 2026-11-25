@@ -195,8 +195,8 @@ body.noscroll{overflow:hidden}
 .library summary::-webkit-details-marker{display:none}
 .liblist{display:grid;gap:6px;margin-top:6px}
 .libitem{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 12px;color:inherit}
-.drillart{display:grid;justify-items:center;background:linear-gradient(180deg,#EEF4F0,#F7F9F7);border-radius:18px;padding:14px}
-.drillart svg{width:100%;max-width:320px;height:auto;filter:drop-shadow(0 6px 14px rgba(14,59,44,.18))}
+.drillart{display:grid;justify-items:center;background:#F7F9F7;border:1px solid var(--line);border-radius:18px;padding:18px 10px 10px}
+.drillart svg{width:100%;max-width:340px;height:auto}
 .modal .steps{counter-reset:s;list-style:none;padding:0;gap:10px}
 .modal .steps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start;line-height:1.45}
 .modal .steps li::before{content:counter(s);display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.85rem}
