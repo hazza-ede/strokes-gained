@@ -690,7 +690,7 @@ function render(){
   if(S.view==='learn') S.view='improve'; if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='stats'; S.statsTab='mates'; }
   strip.hidden=S.view!=='hole'; tabs.hidden=!tabViews.includes(S.view);
   document.body.classList.toggle('holeview',S.view==='hole');
-  const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,auth:vAuth,setup:vSetup,hole:vHole,talk:vTalk,results:vResults,share:vShare}[S.view];
+  const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,auth:vAuth,setup:vSetup,hole:vHole,review:vReview,talk:vTalk,results:vResults,share:vShare}[S.view];
   app.innerHTML=v();
   if(S.view==='hole') strip.innerHTML=vStrip();
   let md=document.getElementById('modal'); if(!md){ md=document.createElement('div'); md.id='modal'; document.body.appendChild(md); }
@@ -1216,12 +1216,28 @@ Reply with only JSON:
 }
 
 // ----- course setup -----
+// course picker: one row per club, tees open underneath
+const splitCourse=n=>{ const m=String(n).split(/\s+[–—-]\s+|,\s*/); return m.length>1?{club:m[0].trim(),tee:m.slice(1).join(' – ').trim()}:{club:String(n).trim(),tee:''}; };
+function clubGroups(){
+  const g=new Map(); S.courses.forEach((c,i)=>{ const {club,tee}=splitCourse(c.name); const k=club.toLowerCase(); if(!g.has(k)) g.set(k,{club,tees:[]}); g.get(k).tees.push({c,i,tee:tee||'Standard'}); });
+  return [...g.values()].sort((a,b)=>a.club.localeCompare(b.club));
+}
+function clubListHtml(){
+  const st=S.setup, q=(S.clubQ||'').trim().toLowerCase();
+  const gs=clubGroups().filter(g=>!q||g.club.toLowerCase().includes(q));
+  if(!gs.length) return `<span class="small muted">No saved course matches. Type it in below and it's saved for next time.</span>`;
+  const selClub=st.courseId?splitCourse((S.courses.find(c=>c.id===st.courseId)||{}).name||'').club.toLowerCase():null;
+  return gs.map(g=>{ const k=g.club.toLowerCase(), open=S.clubOpen===k||(!S.clubOpen&&selClub===k)||(q&&gs.length===1);
+    const sel=g.tees.find(t=>t.c.id===st.courseId);
+    return `<div class="clubrow ${open?'open':''}">${g.tees.length===1?`<button class="clubhead ${sel?'picked':''}" data-act="pickcourse" data-i="${g.tees[0].i}"><span><b>${esc(g.club)}</b><span class="small muted">${g.tees[0].c.holes.length} holes · par ${g.tees[0].c.holes.reduce((a,h)=>a+Number(h.par),0)}</span></span><span class="chev">${sel?'✓':''}</span></button>`:`<button class="clubhead" data-act="openclub" data-val="${esc(k)}" aria-expanded="${open}"><span><b>${esc(g.club)}</b><span class="small muted">${sel?esc(sel.tee):`${g.tees.length} tees`}</span></span><span class="chev">${open?'▴':'▾'}</span></button>`}
+      ${open&&g.tees.length>1?`<div class="chips wide teechips">${g.tees.map(t=>`<button class="chip ${st.courseId===t.c.id?'on':''}" data-act="pickcourse" data-i="${t.i}">${esc(t.tee)}<span class="sub">${t.c.holes.length} holes · par ${t.c.holes.reduce((a,h)=>a+Number(h.par),0)} · ${lenShow(t.c.holes.reduce((a,h)=>a+Number(h.len||0),0)).toLocaleString()} ${fullU()}</span></button>`).join('')}</div>`:''}</div>`; }).join('');
+}
 function vSetup(){
   const st=S.setup, u=fullU();
   return `
   <div class="top"><button class="btn ghost" data-act="home">← Back</button><span class="brand">New round</span><span></span></div>
   <div class="stack">
-    ${S.courses.length?`<div class="card stack"><h3>Your courses</h3><div class="chips wide">${S.courses.map((c,i)=>`<button class="chip ${st.courseId===c.id?'on':''}" data-act="pickcourse" data-i="${i}">${esc(c.name)}<span class="sub">${c.holes.length} holes · par ${c.holes.reduce((a,h)=>a+Number(h.par),0)}</span></button>`).join('')}</div></div>`:''}
+    ${S.courses.length?`<div class="card stack"><h3>Your courses</h3>${clubGroups().length>5?`<input class="field" data-clubq="1" value="${esc(S.clubQ||'')}" placeholder="Search courses" aria-label="Search courses">`:''}<div id="clublist" class="clublist">${clubListHtml()}</div></div>`:''}
     <div class="card stack">
       <label for="cname"><h3>Course</h3></label>
       <input id="cname" class="field" data-setup="name" value="${esc(st.name)}" placeholder="e.g. Royal Adelaide, Blue course">
@@ -1306,7 +1322,6 @@ function vHole(){
 
     <section id="sec-pen" class="sec${uns(h,['penOther'])}"><div class="row between"><div><h3>Other penalty strokes</h3><span class="small muted">Water, OB or unplayable after the tee shot</span></div>${stepper('penOther',h.penOther||0)}</div></section>
 
-    ${sg.err&&h.score!=null?`<div class="err">${esc(sg.err)}</div>`:''}
   </div>`;
 }
 function vStrip(){
@@ -1315,7 +1330,7 @@ function vStrip(){
   return `<div class="in">
     <div class="sgcells">${cell('Tee',sg.ott,sg.ok&&h.par>=4)}${cell('Appr',sg.app,sg.ok)}${cell('Short',sg.atg,sg.ok)}${cell('Putt',sg.putt,sg.ok)}${cell('Hole',sg.total,sg.ok)}</div>
     <span class="small muted">${sg.ok?`${sg.nApp} approach shot${sg.nApp===1?'':'s'} · vs ${esc(baseShort(S.base,S.round))}`:'Strokes gained vs '+esc(baseShort(S.base,S.round))}</span>
-    <div class="row" style="flex-wrap:nowrap"><button class="btn" style="flex:1" data-act="prev" ${S.idx===0?'disabled':''}>Previous</button><button class="btn primary ${sg.ok&&S.smart?'ready':''}" style="flex:2" data-act="${last?'finish':'next'}">${last?'See my round':'Next hole'}</button></div>
+    <div class="row" style="flex-wrap:nowrap"><button class="btn" style="flex:1" data-act="prev" ${S.idx===0?'disabled':''}>Previous</button><button class="btn primary ${sg.ok&&S.smart?'ready':''}" style="flex:2" data-act="${last?'finish':'next'}">${last?'Review round':'Next hole'}</button></div>
   </div>`;
 }
 
@@ -1364,6 +1379,89 @@ function checkHtml(r,per){
   <div class="card stack leaveout ${r.excluded?'on':''}">
     <div class="setrow"><div><b>Leave this round out of my stats</b><div class="small muted">${r.excluded?'It stays in your history, but your averages, trends, goals and mates ignore it.':'Feeling crook or just a write-off? It stays in your history either way.'}</div></div><button class="switch ${r.excluded?'on':''}" data-act="rexclude" aria-label="Leave this round out of my stats" aria-pressed="${!!r.excluded}"></button></div>
     ${r.excluded?`<span class="small muted">Why? (optional, just for you)</span><div class="chips wide">${LEAVE_WHY.map(([k,l])=>`<button class="chip ${r.excludeWhy===k?'on':''}" data-act="rwhy" data-val="${k}">${l}</button>`).join('')}</div>`:''}
+  </div>`;
+}
+// ---- end-of-round review: collect anything that doesn't add up, fix with one tap ----
+const dM=m=>`${lenShow(m)} ${fullU()}`, pM=m=>`${toShow('fp',m)} ${puttU()}`;
+function shotParts(h){
+  const par=Number(h.par), putts=Number(h.putts||0);
+  const ott=par>=4?(h.teePen==='retee'?2:1):0, penTee=par>=4&&(h.teePen==='drop'||h.teePen==='retee')?1:0;
+  const atg=h.atg?Number(h.atgShots||1):0, pen=Number(h.penOther||0);
+  const minApp=par>=4&&h.teeLie==='green'?0:1;
+  const before=ott+penTee+atg+pen;
+  return {par,putts,ott,penTee,atg,pen,minApp,before,logged:before+minApp+putts,nApp:Number(h.score)-putts-before};
+}
+function usualDrive(r){
+  const ds=[]; realRounds().filter(x=>x.id!==r.id&&!x.excluded).forEach(x=>x.holes.forEach(h=>{
+    if(Number(h.par)<4||(h.teePen&&h.teePen!=='none')||h.teeLie==='green'||h.teeDist==null||(h.assumed||[]).includes('teeDist')) return;
+    const d=Number(h.len)-Number(h.teeDist); if(d>80&&d<400) ds.push(d); }));
+  if(ds.length<8) return null; ds.sort((a,b)=>a-b); return Math.round(ds[Math.floor(ds.length/2)]);
+}
+function roundFlags(r){
+  const out=[], ok=new Set(r.flagOk||[]), drive=usualDrive(r);
+  r.holes.forEach((h,i)=>{
+    if(h.score==null||h.score==='') return;
+    const P=shotParts(h), s=Number(h.score), n=h.n;
+    const add=(kind,type,text,fixes)=>{ const key=i+':'+kind; if(!ok.has(key)) out.push({key,i,n,type,text,fixes}); };
+    const set=(o)=>()=>{ Object.assign(h,o); if(h.assumed){ h.assumed=h.assumed.filter(f=>!(f in o)); if(!h.assumed.length) delete h.assumed; } };
+    const plural=(k,w)=>`${k} ${w}${k===1?'':'s'}`;
+    // 1. shots don't add up
+    if(s<P.logged){
+      const parts=[P.ott?plural(P.ott,'tee shot'):'',P.penTee?plural(P.penTee,'penalty'):'',P.minApp&&P.par>=4?'an approach':P.minApp?'a tee shot':'',P.atg?plural(P.atg,'chip'):'',P.pen?plural(P.pen,'penalty'):'',plural(P.putts,'putt')].filter(Boolean);
+      const fx=[{l:`Change score to ${P.logged}`,f:set({score:P.logged})}];
+      if(P.putts>=2&&P.logged-1<=s) fx.push({l:'Take off a putt',f:set({putts:P.putts-1})});
+      add('sum','Shots don\'t add up',`Score is ${s}, but ${P.logged} shots are logged (${parts.join(', ')}).`,fx);
+      return;
+    }
+    if(P.par>=4&&h.teeLie==='green'&&s>P.logged){
+      add('sum','Shots don\'t add up',`Score is ${s}, but only ${P.logged} shots are logged.`,[{l:'Add a putt',f:set({putts:P.putts+1})},{l:`Change score to ${P.logged}`,f:set({score:P.logged})}]);
+      return;
+    }
+    const sg=holeSG(h,String(myHcp(r)));
+    if(!sg.ok&&sg.err){ add('err','Missing detail',sg.err,[{l:'Open hole',go:i}]); return; }
+    const appD=P.par===3?Number(h.len):(h.teeLie==='green'?0:Number(h.teeDist));
+    // 2. impossible combos
+    if(P.par>=4&&h.teeLie!=='green'&&h.teeDist!=null&&Number(h.teeDist)>Number(h.len)){
+      const fixTo=Math.max(30,Number(h.len)-(drive||200));
+      add('dist','Doesn\'t look right',`${dM(h.teeDist)} left after the tee shot, but the hole is only ${dM(h.len)}.`,[{l:`Change to ${dM(fixTo)} left`,f:set({teeDist:fixTo})}]);
+    }
+    if(!h.atg&&P.putts>0&&P.nApp===1&&appD>230&&P.par<=4){
+      const fx=P.nApp>=2?[{l:'I missed the green',f:set({atg:true,atgLie:'rough',atgDist:10,atgShots:1})}]:[{l:`Add a chip (score ${s+1})`,f:set({atg:true,atgLie:'rough',atgDist:10,atgShots:1,score:s+1})}];
+      add('gir','Doesn\'t look right',`On the green in one shot from ${dM(appD)}${P.par===3?' on a par 3':''}.`,fx);
+    }
+    if(!h.atg&&P.nApp>=3&&appD>0){
+      add('many','Worth a check',`${P.nApp} shots to reach the green from ${dM(appD)}, with no chip logged. Trouble or recovery shots?`,[{l:'Make one a chip',f:set({atg:true,atgLie:'rough',atgDist:15,atgShots:1})}]);
+    }
+    // 3. odd putting
+    if(P.putts===1&&Number(h.fp)>=12) add('long1','Odd putting',`Holed a ${pM(h.fp)} first putt.`,[{l:P.nApp>=2?'Make it 2 putts':`Make it 2 putts (score ${s+1})`,f:set(P.nApp>=2?{putts:2}:{putts:2,score:s+1})}]);
+    if(P.putts>=3&&h.fp!=null&&Number(h.fp)<=1.5) add('short3','Odd putting',`${P.putts} putts from ${pM(h.fp)}.`,[{l:`Make it ${P.putts-1} putts (score ${s-1})`,f:set({putts:P.putts-1,score:s-1})}]);
+    if(P.putts===0) add('holed','Worth a check',`No putts, so you holed out from off the green${h.atg?' with a chip':` from ${dM(appD)}`}.`,[{l:P.nApp>=2||h.atg?'Add a putt':`Add a putt (score ${s+1})`,f:set(P.nApp>=2||h.atg?{putts:1,fp:1}:{putts:1,fp:1,score:s+1})}]);
+    // 4. outliers against their own history
+    if(drive&&P.par>=4&&(h.teePen||'none')==='none'&&h.teeLie!=='green'&&h.teeDist!=null){
+      const d=Number(h.len)-Number(h.teeDist);
+      if(d>drive+60&&d>drive*1.25) add('drive','Longer than usual',`A ${dM(d)} drive. You usually hit about ${dM(drive)}.`,[{l:`Make it ${dM(drive)}`,f:set({teeDist:Math.max(10,Number(h.len)-drive)})}]);
+    }
+  });
+  return out;
+}
+function vReview(){
+  const r=S.round; if(!r){ S.view='home'; return vHome(); }
+  const fl=roundFlags(r); S._fx=[];
+  const done=r.holes.filter(h=>h.score!=null&&h.score!=='');
+  const score=done.reduce((a,h)=>a+Number(h.score),0), par=done.reduce((a,h)=>a+Number(h.par),0), tp=score-par;
+  const n=fl.length, resolved=(r.flagOk||[]).length+(r.flagFixed||0);
+  return `<div class="top"><button class="btn ghost" data-act="backholes">← Holes</button><span class="brand">Check round</span><span></span></div>
+  <div class="stack">
+    <div class="hero revhero"><span class="eyebrow">${esc(r.course)} · ${fmtDate(r.date)}</span>
+      <div class="row between" style="flex-wrap:nowrap;align-items:flex-end"><div><div class="revscore">${score}</div><span class="small" style="opacity:.8">${tp===0?'Level par':tp>0?'+'+tp:tp} · ${done.length} hole${done.length===1?'':'s'}</span></div>
+      <div class="revcount ${n?'':'ok'}">${n?`<b>${n}</b><span>thing${n===1?'':'s'} to check<br>before saving</span>`:`<b>✓</b><span>Everything<br>adds up</span>`}</div></div>
+    </div>
+    ${n?`<span class="small muted">Tap a fix and it's done. If something odd really happened, tap "It's correct".</span>`:resolved?`<span class="small muted">All sorted. Your strokes gained will be spot on.</span>`:''}
+    ${fl.map(f=>{ const btns=f.fixes.map(x=>{ if(x.go!=null) return `<button class="btn small" data-act="fixhole" data-i="${x.go}">${esc(x.l)}</button>`; S._fx.push({f:x.f,key:f.key}); return `<button class="btn small primary" data-act="flagfix" data-val="${S._fx.length-1}">${esc(x.l)}</button>`; }).join('');
+      return `<div class="card flagcard"><div class="row between" style="flex-wrap:nowrap;align-items:flex-start;gap:10px"><div><span class="flagtype">${esc(f.type)}</span><b class="flagtxt">Hole ${f.n}: ${esc(f.text)}</b></div></div>
+        <div class="row" style="gap:8px;align-items:center">${btns}<button class="linkbtn" data-act="flagok" data-val="${esc(f.key)}">It's correct</button></div></div>`; }).join('')}
+    <button class="btn big primary" data-act="savereview" ${n?'disabled':''}>${n?`Save round (${n} to check)`:'Save round'}</button>
+    ${S.saveMsg?`<span class="small muted">${esc(S.saveMsg)}</span>`:''}
   </div>`;
 }
 function vResults(){
@@ -1442,7 +1540,7 @@ function wrapText(g,text,x,y,maxW,lh){ const words=String(text).split(/\s+/); co
 function roundRect(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); g.fill(); }
 
 // ================= actions =================
-function newSetup(){ S.setup={name:'',cond:[],date:today(),hcp:fmtHcp(S.hcp),courseId:null,holes:Array.from({length:18},(_,i)=>({par:PARS9[i%9],len:TYPICAL_LEN[PARS9[i%9]]}))}; }
+function newSetup(){ S.clubOpen=null; S.clubQ=''; S.setup={name:'',cond:[],date:today(),hcp:fmtHcp(S.hcp),courseId:null,holes:Array.from({length:18},(_,i)=>({par:PARS9[i%9],len:TYPICAL_LEN[PARS9[i%9]]}))}; }
 function startRound(){
   const st=S.setup; const name=st.name.trim()||'Unnamed course';
   const h=parseHcp(st.hcp); if(h!=null&&h!==S.hcp){ S.hcp=h; lsSet('sg.hcp',h); }
@@ -1525,6 +1623,7 @@ document.addEventListener('click',e=>{
     case 'fixhole': { if(S.viewing){ S.round=JSON.parse(JSON.stringify(S.viewing)); S.viewing=null; } S.idx=Number(b.dataset.i); S.openExact={}; S.editHole=false; saveDraft(); S.view='hole'; window.scrollTo(0,0); break; }
     case 'newround': newSetup(); S.view='setup'; window.scrollTo(0,0); break;
     case 'resume': S.view='hole'; break;
+    case 'openclub': S.clubOpen=S.clubOpen===val?'__none':val; break;
     case 'pickcourse': { const c=S.courses[Number(b.dataset.i)]; S.setup.courseId=c.id; S.setup.name=c.name; S.setup.holes=c.holes.map(h=>({par:h.par,len:h.len})); break; }
     case 'nholes': { const n=Number(val); const hs=S.setup.holes; if(n<hs.length) S.setup.holes=hs.slice(0,n); else while(S.setup.holes.length<n){ const p=PARS9[S.setup.holes.length%9]; S.setup.holes.push({par:p,len:TYPICAL_LEN[p]}); } break; }
     case 'cpar': { const h=S.setup.holes[Number(b.dataset.i)]; const p=Number(val); if(Number(h.len)===TYPICAL_LEN[h.par]) h.len=TYPICAL_LEN[p]; h.par=p; break; }
@@ -1541,7 +1640,11 @@ document.addEventListener('click',e=>{
     case 'goto': S.idx=Number(b.dataset.i); S.openExact={}; S.editHole=false; saveDraft(); window.scrollTo(0,0); break;
     case 'prev': if(S.idx>0){ S.idx--; S.openExact={}; S.editHole=false; window.scrollTo(0,0);} break;
     case 'next': S.idx++; S.openExact={}; S.editHole=false; window.scrollTo(0,0); syncDraftToDb(); break;
-    case 'finish': S.round.holes.forEach(h=>commitAssumptions(h)); saveDraft(); S.view='results'; S.viewing=null; window.scrollTo(0,0); break;
+    case 'finish': S.round.holes.forEach(h=>commitAssumptions(h)); S.round.flagFixed=0; saveDraft(); S.view='review'; S.viewing=null; S.saveMsg=''; window.scrollTo(0,0); break;
+    case 'backholes': S.view='hole'; window.scrollTo(0,0); break;
+    case 'flagfix': { const x=(S._fx||[])[Number(val)]; if(x){ x.f(); S.round.flagFixed=(S.round.flagFixed||0)+1; saveDraft(); } break; }
+    case 'flagok': { const r=S.round; r.flagOk=[...new Set([...(r.flagOk||[]),val])]; saveDraft(); break; }
+    case 'savereview': { if(roundFlags(S.round).length) break; const r=S.round, before=earnedMap(); S.saveMsg='Saving…'; render(); persistRound(r).then(msg=>{ celebrateDiff(before,r); S.round=null; lsSet('sg.draft',null); S.viewing=S.rounds.find(x=>x.id===r.id); S.view='results'; S.saveMsg=msg; window.scrollTo(0,0); if(sb&&uid) sb.from('drafts').delete().eq('user_id',uid).then(()=>{},()=>{}); render(); }); return; }
     case 'open': { const r=allRounds().find(x=>x.id===b.dataset.id); S.viewing=r; S.view='results'; window.scrollTo(0,0); break; }
     case 'edit': { const r=S.viewing||S.round; S.round=JSON.parse(JSON.stringify(r)); S.viewing=null; S.idx=0; saveDraft(); S.view='hole'; break; }
     case 'save': { const r=S.round, before=earnedMap(); S.saveMsg='Saving…'; render(); persistRound(r).then(msg=>{ celebrateDiff(before,r); S.round=null; lsSet('sg.draft',null); S.viewing=S.rounds.find(x=>x.id===r.id); S.saveMsg=msg; if(sb&&uid) sb.from('drafts').delete().eq('user_id',uid).then(()=>{},()=>{}); render(); }); return; }
@@ -1570,6 +1673,7 @@ document.addEventListener('change',e=>{ const el=e.target; if(el.id==='cadphoto'
 document.addEventListener('input',e=>{
   const el=e.target;
   if(el.dataset.cad){ S.cad[el.dataset.cad]=el.value; return; }
+  if(el.dataset.clubq){ S.clubQ=el.value; const l=document.getElementById('clublist'); if(l) l.innerHTML=clubListHtml(); return; }
   if(el.dataset.auth){ S.auth[el.dataset.auth]=el.value; return; }
   if(el.dataset.me){ me.name=el.value; clearTimeout(window.__nm); window.__nm=setTimeout(()=>{ if(sb&&uid){ sb.from('profiles').upsert({id:uid,display_name:me.name}); publishMe(); } },800); return; }
   if(el.id==='talk'){ S.talk=el.value; lsSet('sg.talk',S.talk); return; }
