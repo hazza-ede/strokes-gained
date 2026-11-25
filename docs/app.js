@@ -892,7 +892,7 @@ function vPath(rounds,isExample){
 }
 
 // ----- stats -----
-const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['detail','Deep dive'],['badges','Badges']]);
+const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['disp','Dispersion'],['detail','Deep dive'],['badges','Badges']]);
 const whoSeg=()=>subTabs('mytab',S.myTab||'me',[['me','My game'],['mates','Friends']]);
 function bounceHtml(rs){
   const bb=bounceBack(rs), pct=bb.blow?Math.round(bb.ok/bb.blow*100):null;
@@ -965,10 +965,71 @@ function badgesHtml(){
     ${fs.length?`${secHead('Fun stats','The numbers worth bragging (or groaning) about')}<div class="tiles">${fs.map(([l,v,sub])=>`<div class="tile"><span>${l}</span><b>${v}</b><span>${sub}</span></div>`).join('')}</div>`:''}`;
 }
 const condTags=r=>(r.cond||[]).map(c=>` <span class="tag soft">${esc((CONDS.find(x=>x[0]===c)||[,c])[1])}</span>`).join('');
+// ================= dispersion: where tee shots and approaches finish =================
+const jit=(i,a)=>((i*37+11)%17/16-.5)*a;
+function vDispersion(rs){
+  const kind=S.dispKind||'tee';
+  return `<div class="seg libseg">${[['tee','Tee shots'],['app','Approaches']].map(([k,l])=>`<button class="${kind===k?'on':''}" data-act="dispkind" data-val="${k}">${l}</button>`).join('')}</div>${kind==='tee'?teeDisp(rs):appDisp(rs)}`;
+}
+const dispEmpty=w=>`<div class="card stack"><b>Not enough ${w} yet</b><span class="muted">Every ${w==='tee shots'?'tee shot':'approach'} you tap on the hole screen adds a dot here. After about 3 rounds you'll see your pattern.</span></div>`;
+function teeDisp(rs){
+  const all=[]; rs.forEach(r=>r.holes.forEach(h=>{ if(Number(h.par)<4||h.teeLie==='green'||h.teeDist==null||!h.len||h.teePen==='retee') return; if(h.teeLie!=='fairway'&&!h.teeSide) return; all.push({h,drive:Number(h.len)-Number(h.teeDist)}); }));
+  const clubs=CLUBS.filter(([k])=>all.some(x=>x.h.teeClub===k)), club=clubs.some(c=>c[0]===S.dispClub)?S.dispClub:'all';
+  const pts=all.filter(x=>club==='all'||x.h.teeClub===club);
+  const chips=clubs.length?`<div class="chips hscroll">${[['all','All clubs'],...clubs].map(([k,l])=>`<button class="chip ${club===k?'on':''}" data-act="dispclub" data-val="${k}">${l}</button>`).join('')}</div>`:'';
+  if(pts.length<3) return chips+dispEmpty('tee shots');
+  const u=fullU(), conv=v=>toShow('teeDist',v), ys=pts.map(p=>conv(p.drive));
+  const lo=Math.floor((Math.min(...ys)-10)/10)*10, hi=Math.ceil((Math.max(...ys)+10)/10)*10;
+  const W=358,H=380,x0=W/2, X=x=>x0+x*3.2, Y=y=>H-(y-lo)/(hi-lo)*H;
+  const xy=pts.map((p,i)=>{ const h=p.h, side=h.teeSide==='left'?-1:1, x=h.teeLie==='fairway'?jit(i,22):side*(30+(h.teePen==='drop'?16:h.teeLie==='recovery'?10:h.teeLie==='sand'?5:0)+Math.abs(jit(i,8))); return [x,conv(p.drive)]; });
+  const n=xy.length, mx=xy.reduce((a,p)=>a+p[0],0)/n, my=xy.reduce((a,p)=>a+p[1],0)/n; let sxx=0,syy=0,sxy=0; xy.forEach(([x,y])=>{ sxx+=(x-mx)**2; syy+=(y-my)**2; sxy+=(x-mx)*(y-my); }); sxx/=n; syy/=n; sxy/=n;
+  // ellipse in screen space
+  const ax=3.2, ay=H/(hi-lo), a=sxx*ax*ax, c2=syy*ay*ay, b2=-sxy*ax*ay, t=(a+c2)/2, d=Math.sqrt(((a-c2)/2)**2+b2*b2), l1=t+d, l2=Math.max(t-d,4), ang=Math.atan2(l1-a,b2||1e-6)*180/Math.PI;
+  const step=(hi-lo)>60?20:10, arcs=[]; for(let v=lo+step;v<hi;v+=step) arcs.push(`<path d="M -20 ${Y(v)+14} Q ${x0} ${Y(v)-14} ${W+20} ${Y(v)+14}" stroke="rgba(255,255,255,.7)" stroke-width="1.3" fill="none"/><text x="${x0+6}" y="${Y(v)-4}" fill="#fff" font-size="13" font-family="Inter,system-ui">${v}</text>`);
+  const fwN=pts.filter(p=>p.h.teeLie==='fairway').length, L=pts.filter(p=>p.h.teeSide==='left'&&p.h.teeLie!=='fairway').length, R=pts.filter(p=>p.h.teeSide==='right'&&p.h.teeLie!=='fairway').length, bad=pts.filter(p=>p.h.teeLie==='recovery'||p.h.teePen==='drop').length;
+  const miss=L+R, side=R>L?'right':'left', big=Math.max(L,R);
+  const say=miss<2?'You\'re keeping it in play. Keep doing what you\'re doing.':big/miss>=.65?`Most of your misses go ${side}${bad?`, and ${bad} ended in trees or a penalty`:''}. Aim down the ${side==='right'?'left':'right'} side of the fairway.`:`Your misses are split both ways, so it's a strike or start-line issue more than an aim one.`;
+  return `${chips}<div class="dispbox grass"><svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block" role="img" aria-label="Tee shot dispersion: ${n} shots">
+    <rect x="${X(-20)}" y="0" width="${X(20)-X(-20)}" height="${H}" fill="rgba(255,255,255,.12)"/><line x1="${x0}" y1="0" x2="${x0}" y2="${H}" stroke="rgba(255,255,255,.85)" stroke-width="1.4"/>${arcs.join('')}
+    ${n>=4?`<ellipse cx="${X(mx)}" cy="${Y(my)}" rx="${2*Math.sqrt(l1)}" ry="${2*Math.sqrt(l2)}" transform="rotate(${-ang} ${X(mx)} ${Y(my)})" stroke="#fff" stroke-width="2" fill="rgba(255,255,255,.08)"/>`:''}
+    ${xy.map(([x,y])=>`<circle cx="${X(x)}" cy="${Y(y)}" r="5.5" fill="#fff"/>`).join('')}
+    <text x="10" y="${H-10}" fill="#fff" font-size="12" font-family="Inter,system-ui" opacity=".85">LEFT</text><text x="${W-10}" y="${H-10}" text-anchor="end" fill="#fff" font-size="12" font-family="Inter,system-ui" opacity=".85">RIGHT</text><text x="${x0}" y="16" text-anchor="middle" fill="#fff" font-size="11" font-family="Inter,system-ui" opacity=".85">FAIRWAY</text></svg></div>
+    <div class="dstat"><div><b class="num">${Math.round(my)} ${u}</b><span>Average drive</span></div><div><b class="num">${Math.round(fwN/n*100)}%</b><span>Fairways hit</span></div><div><b class="${miss&&big/miss>=.65?'neg':''}">${miss?`${big} of ${miss} ${side}`:'None'}</b><span>Misses</span></div></div>
+    <div class="card stack" style="gap:6px"><b>What it means</b><span class="small muted">${say}</span><span class="small muted">${n} tee shot${n===1?'':'s'}. Left and right are by zone, not exact metres.</span></div>`;
+}
+function appDisp(rs){
+  const u=fullU(), all=[]; rs.forEach(r=>r.holes.forEach(h=>{ if(!h.appCell&&!h.appMiss) return; const par=Number(h.par); const dist=par===3?Number(h.len):(h.teeLie==='green'?null:h.teeDist); if(dist==null) return; all.push({h,dist:toShow('teeDist',dist)}); }));
+  const bands=isYd()?[['all','All'],['b1','Under 100'],['b2','100–150 yd'],['b3','150–200 yd'],['b4','200+ yd']]:[['all','All'],['b1','Under 100'],['b2','100–150 m'],['b3','150–200 m'],['b4','200+ m']];
+  const inB=(d,k)=>k==='all'||(k==='b1'&&d<100)||(k==='b2'&&d>=100&&d<150)||(k==='b3'&&d>=150&&d<200)||(k==='b4'&&d>=200);
+  const band=S.dispBand||'all', pts=all.filter(p=>inB(p.dist,band));
+  const chips=`<div class="chips hscroll">${bands.filter(([k])=>k==='all'||all.some(p=>inB(p.dist,k))).map(([k,l])=>`<button class="chip ${band===k?'on':''}" data-act="dispband" data-val="${k}">${l}</button>`).join('')}</div>`;
+  if(pts.length<3) return chips+dispEmpty('approaches');
+  const S2=340,c=S2/2,R=160,r=100, maxFt=isFt()?40:12;
+  const on=pts.filter(p=>p.h.appCell), miss=pts.filter(p=>p.h.appMiss);
+  const dots=on.map((p,i)=>{ const [ri,cj]=p.h.appCell.split('-').map(Number); let dx=cj-1, dy=ri-1; const fp=p.h.fp!=null?toShow('fp',p.h.fp):maxFt/3; const n=Math.hypot(dx,dy);
+    if(!n){ const a=i*2.4; dx=Math.cos(a); dy=Math.sin(a); } else { const a=Math.atan2(dy,dx)+jit(i,.5); dx=Math.cos(a); dy=Math.sin(a); } const rad=Math.min(1,fp/maxFt)*(r-8)*(n?1:.35);
+    return `<circle cx="${c+dx*rad+jit(i,6)}" cy="${c+dy*rad+jit(i+3,6)}" r="5.5" fill="#fff"/>`; }).join('');
+  const cnt={}; miss.forEach(p=>cnt[p.h.appMiss]=(cnt[p.h.appMiss]||0)+1);
+  const P=(a,rad)=>[c+rad*Math.cos(a*Math.PI/180),c+rad*Math.sin(a*Math.PI/180)];
+  const ring=MISS8.map(([k],i)=>{ const a0=-112.5+i*45,a1=a0+45,[x1,y1]=P(a0,R),[x2,y2]=P(a1,R),[x3,y3]=P(a1,r+6),[x4,y4]=P(a0,r+6),[lx,ly]=P((a0+a1)/2,(R+r)/2+3), v=cnt[k]||0, pc=miss.length?Math.round(v/miss.length*100):0;
+    return `<path d="M${x1} ${y1} A${R} ${R} 0 0 1 ${x2} ${y2} L${x3} ${y3} A${r+6} ${r+6} 0 0 0 ${x4} ${y4} Z" fill="${v?`rgba(194,64,47,${.25+.6*v/Math.max(...Object.values(cnt))})`:'#4a7a38'}" stroke="#fff" stroke-width="3"/><text x="${lx}" y="${ly+5}" text-anchor="middle" fill="#fff" font-size="13" font-weight="700" font-family="Inter,system-ui">${v?pc+'%':''}</text>`; }).join('');
+  const rings=[maxFt/2,maxFt].map(v=>`<circle cx="${c}" cy="${c}" r="${v/maxFt*(r-8)}" fill="none" stroke="rgba(255,255,255,.5)" stroke-dasharray="4 5"/><text x="${c+v/maxFt*(r-8)*.7+3}" y="${c-v/maxFt*(r-8)*.7}" fill="#fff" font-size="11" font-family="Inter,system-ui">${v} ${puttU()}</text>`).join('');
+  const isLong=p=>p.h.appCell?p.h.appCell[0]==='0':/^long/.test(p.h.appMiss), isShort=p=>p.h.appCell?p.h.appCell[0]==='2':/^short/.test(p.h.appMiss);
+  const nL=pts.filter(isLong).length, nS=pts.filter(isShort).length, gir=Math.round(on.length/pts.length*100);
+  const fps=on.map(p=>p.h.fp).filter(v=>v!=null), avgFp=fps.length?toShow('fp',fps.reduce((a,b)=>a+b,0)/fps.length):null;
+  const lr=nS+nL, say=lr>=3&&nS/lr>=.65?`You finish short of the flag ${Math.round(nS/lr*100)}% of the time when you're not pin-high. Take one more club.`:lr>=3&&nL/lr>=.65?`You go long more often than short. Club down or swing smoother.`:`Your distance control is balanced. Work on start line to tighten the spread.`;
+  return `${chips}<div class="dispbox greenbg"><svg viewBox="0 0 ${S2} ${S2}" width="100%" style="display:block;max-width:420px;margin:0 auto" role="img" aria-label="Approach dispersion around the flag: ${pts.length} shots">${ring}<circle cx="${c}" cy="${c}" r="${r}" fill="#86c766" stroke="#fff" stroke-width="2.5"/>${rings}
+    <line x1="${c}" y1="${c}" x2="${c}" y2="${c-26}" stroke="#fff" stroke-width="2"/><path d="M ${c} ${c-26} l 14 5 l -14 5 z" fill="#FFD36E"/><circle cx="${c}" cy="${c}" r="3.5" fill="#111"/>${dots}
+    <text x="${c}" y="${c-r+16}" text-anchor="middle" fill="#fff" font-size="10" font-family="Inter,system-ui" opacity=".85">PAST THE FLAG</text><text x="${c}" y="${c+r-8}" text-anchor="middle" fill="#fff" font-size="10" font-family="Inter,system-ui" opacity=".85">SHORT</text></svg>
+    <span class="small" style="color:#fff;opacity:.85;text-align:center">Dots: greens hit, placed by direction and first-putt length. Ring: where you missed.</span></div>
+    <div class="dstat"><div><b class="num">${gir}%</b><span>Greens hit</span></div><div><b class="num">${avgFp!=null?`${avgFp.toFixed(isFt()?0:1)} ${puttU()}`:'–'}</b><span>Average first putt on greens hit</span></div><div><b class="${lr&&nS/lr>=.65?'neg':''}">${lr?`${Math.round(nS/lr*100)}% short`:'–'}</b><span>When not pin-high</span></div></div>
+    <div class="card stack" style="gap:6px"><b>What it means</b><span class="small muted">${say}</span><span class="small muted">${pts.length} approach${pts.length===1?'':'es'}.</span></div>`;
+}
 function vStats(){
   const real=statRounds(), anyCond=realRounds().some(r=>(r.cond||[]).length), rs=real.length?chrono(real):[EXAMPLE_ROUND], ex=!real.length;
   const top=`<div class="top"><span class="brand">Stats</span>${sampleTag(ex)}</div>${statsTabs()}`;
   const nOut=realRounds().length-real.length, tough=nOut?`<span class="small muted">${nOut} round${nOut>1?'s':''} left out of these numbers. Open a round to change it.</span>`:'';
+  if(S.statsTab==='disp') return `${top}<div class="stack">${vDispersion(ex?[]:rs)}</div>`;
   if(S.statsTab==='badges') return `${top}<div class="stack">${ex?`<div class="card muted">Badges and fun stats start once you've saved a round.</div>`:badgesHtml()}</div>`;
   const base=fixedBase();
   if(S.statsTab==='detail'){
@@ -1784,6 +1845,57 @@ function stepper(field,val){ return `<div class="stepper"><button data-act="step
 const uns=(h,fields)=>fields.some(f=>(h.unsure||[]).includes(f))?' unsure':'';
 function teeChoices(lenM){ const max=Math.min(toShow('teeDist',lenM)-20,isYd()?360:340); const out=[]; for(let d=20; d<=max; d+= d<200?20:30) out.push(d); return out; }
 
+// ---- tap targets for the tee shot and approach, with a pop-up panel for the follow-up questions ----
+const MISS8=[['long','Long'],['longright','Long right'],['right','Right'],['shortright','Short right'],['short','Short'],['shortleft','Short left'],['left','Left'],['longleft','Long left']];
+const CELL_NAMES=[['Long left of the flag','Long of the flag','Long right of the flag'],['Left of the flag','At the flag','Right of the flag'],['Short left of the flag','Short of the flag','Short right of the flag']];
+const TEE_LIE_WORD={rough:'Rough',sand:'Bunker',recovery:'Trees',fairway:'Fairway',green:'Green'};
+const tickSvg=(x,y)=>`<circle cx="${x}" cy="${y}" r="13" fill="#0E3B2C"/><path d="M${x-6} ${y} l4 4 l8 -9" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+function teeTarget(h){
+  const W=330,H=170, sel=h.teeLie==='fairway'?'fw':h.teeSide||null;
+  const z=[['left',0,78,'Left'],['fw',84,246,'Fairway'],['right',252,330,'Right']];
+  return `<div class="tgt"><svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:420px" role="group" aria-label="Where the tee shot finished">${z.map(([k,x0,x1,l])=>{ const on=sel===k, miss=k!=='fw', cx=(x0+x1)/2;
+    return `<g class="tz" data-act="teezone" data-val="${k}" role="button" aria-label="${miss?l+' miss':'Fairway'}" aria-pressed="${on}"><rect x="${x0}" y="0" width="${x1-x0}" height="${H}" rx="14" fill="${miss?'#4a7a38':'#86c766'}"/>${on?`<rect x="${x0+3}" y="3" width="${x1-x0-6}" height="${H-6}" rx="12" fill="none" stroke="#0E3B2C" stroke-width="5"/>${tickSvg(cx,H/2+32)}`:''}<text class="tlbl" x="${cx}" y="${H/2-2}" text-anchor="middle">${miss?l.toUpperCase():'FAIRWAY'}</text>${miss?`<text class="tlbl" x="${cx}" y="${H/2+13}" text-anchor="middle" style="font-size:10px;opacity:.85">MISS</text>`:''}</g>`; }).join('')}</svg></div>`;
+}
+function appTarget(h){
+  const S2=320,c=S2/2,R=152,r=90, P=(a,rad)=>[c+rad*Math.cos(a*Math.PI/180),c+rad*Math.sin(a*Math.PI/180)];
+  const ring=MISS8.map(([k,l],i)=>{ const a0=-112.5+i*45, a1=a0+45; const [x1,y1]=P(a0,R),[x2,y2]=P(a1,R),[x3,y3]=P(a1,r+6),[x4,y4]=P(a0,r+6),[lx,ly]=P((a0+a1)/2,(R+r)/2+3), on=h.appMiss===k, ls=l.toUpperCase().split(' ');
+    return `<g class="tz" data-act="appzone" data-val="m-${k}" role="button" aria-label="Missed ${l.toLowerCase()}" aria-pressed="${on}"><path d="M${x1} ${y1} A${R} ${R} 0 0 1 ${x2} ${y2} L${x3} ${y3} A${r+6} ${r+6} 0 0 0 ${x4} ${y4} Z" fill="#4a7a38" stroke="${on?'#0E3B2C':'#fff'}" stroke-width="${on?5:3}"/>${on?tickSvg(lx,ly):ls.map((t,j)=>`<text class="tlbl" x="${lx}" y="${ly+4+(j-(ls.length-1)/2)*12}" text-anchor="middle">${t}</text>`).join('')}</g>`; }).join('');
+  const cell=2*r/3; let grid='', mark='';
+  for(let i=0;i<3;i++) for(let j=0;j<3;j++){ const x=c-r+j*cell, y=c-r+i*cell, on=h.appCell===`${i}-${j}`;
+    grid+=`<rect class="tz" data-act="appzone" data-val="g-${i}-${j}" role="button" aria-label="On the green, ${CELL_NAMES[i][j].toLowerCase()}" x="${x}" y="${y}" width="${cell}" height="${cell}" fill="transparent" stroke="rgba(255,255,255,.55)" stroke-width="1.5"/>`;
+    if(on) mark=`<rect x="${x+3}" y="${y+3}" width="${cell-6}" height="${cell-6}" rx="6" fill="none" stroke="#0E3B2C" stroke-width="4" pointer-events="none"/>${i===1&&j===1?'':`<g pointer-events="none">${tickSvg(x+cell/2,y+cell/2)}</g>`}`; }
+  return `<div class="tgt"><svg viewBox="0 0 ${S2} ${S2}" width="300" height="300" role="group" aria-label="Where the approach finished">${ring}<defs><clipPath id="appclip"><circle cx="${c}" cy="${c}" r="${r}"/></clipPath></defs><circle cx="${c}" cy="${c}" r="${r}" fill="#86c766"/><g clip-path="url(#appclip)">${grid}${mark}</g><circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#fff" stroke-width="2.5" pointer-events="none"/>
+    <g pointer-events="none"><line x1="${c}" y1="${c+6}" x2="${c}" y2="${c-22}" stroke="#fff" stroke-width="2.2"/><path d="M ${c} ${c-22} l 14 5 l -14 5 z" fill="#FFD36E"/><circle cx="${c}" cy="${c+6}" r="3.5" fill="#111"/></g></svg></div>`;
+}
+const teeDone=h=>h.teeLie==='green'||(!!h.teeLie&&h.teeDist!=null);
+function teeSummary(h){ const club=(CLUBS.find(c=>c[0]===h.teeClub)||[])[1]; const where=h.teeLie==='green'?'Drove the green':h.teeLie==='fairway'?'Fairway':`${h.teeSide?Cap(h.teeSide)+' miss · ':''}${TEE_LIE_WORD[h.teeLie]||h.teeLie}`;
+  const pen=h.teePen==='drop'?' · penalty drop':h.teePen==='retee'?' · OB, re-teed':''; return [club,where+pen,h.teeLie!=='green'&&h.teeDist!=null?`${toShow('teeDist',h.teeDist)} ${fullU()} left`:null].filter(Boolean).join(' · '); }
+const appDone=h=>Number(h.putts)===0&&!h.atg?!!h.appCell:(h.appCell&&h.fp!=null)||(h.appMiss&&h.atgLie&&h.atgDist!=null&&(h.fp!=null||Number(h.putts)===0));
+function appSummary(h){ const fp=h.fp!=null?`${toShow('fp',h.fp)} ${puttU()} first putt`:Number(h.putts)===0?'holed it':null;
+  if(h.appCell){ const [i,j]=h.appCell.split('-').map(Number); return [`On the green · ${CELL_NAMES[i][j].toLowerCase()}`,fp].filter(Boolean).join(' · '); }
+  return [`Missed ${(MISS8.find(m=>m[0]===h.appMiss)||[,''])[1].toLowerCase()}`,(LIES_ATG.find(l=>l[0]===h.atgLie)||[,''])[1],h.atgDist!=null?`${toShow('atgDist',h.atgDist)} ${fullU()}`:null,Number(h.atgShots||1)>1?`${h.atgShots} shots on`:null,fp].filter(Boolean).join(' · '); }
+function holeSheet(h){
+  const k=S.sheet; if(!k) return '';
+  const fpField=`<div class="row between"><span class="small muted">First putt length</span><span class="small muted">${isFt()?'feet':'metres'}</span></div>${distField('fp',isFt()?PUTT_FT.filter(x=>x>=2&&x<=60):PUTT_M.filter(x=>x>=0.5),isFt()?'ft':'m',toShow('fp',h.fp),'First putt length')}
+    ${k==='miss'&&h.score!=null?`<button class="linkbtn small" style="justify-self:start" data-act="holedout">Holed it from off the green</button>`:''}`;
+  let title='', body='';
+  if(k==='tee'){ title=`Missed ${h.teeSide}`; body=`<span class="small muted">Where was it?</span><div class="chips wide">${[['rough','Rough'],['sand','Bunker'],['recovery','Trees']].map(([v,l])=>`<button class="chip ${h.teeLie===v&&!S.sheetPen&&h.teePen!=='drop'&&h.teePen!=='retee'?'on':''}" data-act="teelie" data-val="${v}">${l}</button>`).join('')}<button class="chip ${S.sheetPen||h.teePen==='drop'||h.teePen==='retee'?'on':''}" data-act="teelie" data-val="pen">Penalty</button></div>
+    ${S.sheetPen||h.teePen==='drop'||h.teePen==='retee'?`<div class="chips wide"><button class="chip ${h.teePen==='drop'?'on':''}" data-act="teepen" data-val="drop">Penalty drop</button><button class="chip ${h.teePen==='retee'?'on':''}" data-act="teepen" data-val="retee">OB, re-teed</button></div>`:''}`; }
+  if(k==='putt'){ const [i,j]=(h.appCell||'1-1').split('-').map(Number); title=`On the green · ${CELL_NAMES[i][j].toLowerCase()}`; body=`${fpField}<span class="small muted">Putts are worked out from your score.</span>`; }
+  if(k==='miss'){ title=`Missed ${(MISS8.find(m=>m[0]===h.appMiss)||[,''])[1].toLowerCase()}`; body=`<span class="small muted">Where was it?</span><div class="chips wide">${[['fairway','Fairway'],['rough','Rough'],['sand','Bunker']].map(([v,l])=>chip('atgLie',v,l,h.atgLie===v)).join('')}</div>
+    <div class="row between"><span class="small muted">Distance to the flag</span><span class="small muted">${isYd()?'yards':'metres'}</span></div>${distField('atgDist',ATG_CH,fullU(),toShow('atgDist',h.atgDist),'Distance to the flag')}
+    <div class="row between"><span class="small muted">Shots to get on the green</span>${stepper('atgShots',h.atgShots||1)}</div>
+    ${fpField}`; }
+  return `<div class="sheetback" data-act="sheetclose"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="grab"></span><div class="shead"><b>${esc(title)}</b><button class="linkbtn small" data-act="sheetchange">Change</button></div><div class="stack" style="gap:10px">${body}</div><button class="btn primary" data-act="sheetclose">Done</button></div>`;
+}
+// Close the panel by itself once everything it asks has an answer.
+function sheetAutoClose(){
+  const h=hole(), k=S.sheet; if(!k) return;
+  if(k==='tee'&&h.teeLie&&h.teeLie!=='fairway'&&(!S.sheetPen||h.teePen==='drop'||h.teePen==='retee')) S.sheet=null;
+  if(k==='putt'&&(h.fp!=null||Number(h.putts)===0)) S.sheet=null;
+  if(k==='miss'&&h.atgLie&&h.atgDist!=null&&(h.fp!=null||Number(h.putts)===0)) S.sheet=null;
+  if(!S.sheet){ S.sheetPen=false; document.body.classList.remove('noscroll'); }
+}
 function vHole(){
   const r=S.round, h=hole(), par=Number(h.par), N=r.holes.length, u=fullU();
   const sg=hsg(h);
@@ -1807,23 +1919,25 @@ function vHole(){
     </section>
 
     ${par>=4?`
-    <section id="sec-tee" class="sec${uns(h,['teeLie','teeDist','teePen'])}${asm(h,['teeLie','teeDist'])}"><div class="lab"><h3>${S.clubs?'Tee shot':'Tee shot finished in'}</h3></div>
-      ${S.clubs?`<span class="small muted">Club</span><div class="chips wide">${CLUBS.map(([k,l])=>chip('teeClub',k,l,h.teeClub===k)).join('')}</div><span class="small muted">Finished in</span>`:''}
-      <div class="chips wide">${LIES_TEE.map(([k,l])=>chip('teeLie',k,l,h.teeLie===k)).join('')}</div>${assumeHint(h,'teeLie')}
-      <div class="seg">${[['none','No penalty'],['drop','Penalty drop'],['retee','OB, re-teed']].map(([k,l])=>`<button class="${(h.teePen||'none')===k?'on':''}" data-act="set" data-field="teePen" data-val="${k}">${l}</button>`).join('')}</div>
+    <section id="sec-tee" class="sec${uns(h,['teeLie','teeDist','teePen'])}${asm(h,['teeLie','teeDist'])}"><div class="lab"><h3>Tee shot</h3></div>
+      ${teeDone(h)&&S.editSec!=='tee'?`<button class="sumpill" data-act="editsec" data-val="tee"><span>${esc(teeSummary(h))}</span><u>Edit</u></button>`:`
+      ${S.clubs?`<span class="small muted">Club</span><div class="chips wide">${CLUBS.map(([k,l])=>chip('teeClub',k,l,h.teeClub===k)).join('')}</div>`:''}
+      <span class="small muted">Tap the fairway, or the side you missed.</span>
+      ${teeTarget(h)}
+      ${h.teeLie==='green'?((h.derived||{}).teeLie?derivedNote(h,'teeLie'):`<span class="small muted">Drove the green. Your first putt below covers it.</span>`):`<button class="linkbtn small" style="justify-self:start" data-act="set" data-field="teeLie" data-val="green">Drove the green?</button>`}
+      ${assumeHint(h,'teeLie')}
       ${h.teeLie&&h.teeLie!=='green'?`<div class="lab"><span class="small muted">${h.teePen==='drop'?'Distance to the hole from your drop':h.teePen==='retee'?'Distance left after your second tee shot':'Distance left to the hole'}</span><span class="small muted">${isYd()?'yards':'metres'}</span></div>
-      ${distField('teeDist',teeChoices(h.len),u,toShow('teeDist',h.teeDist),'Distance left after tee shot')}${assumeHint(h,'teeDist')}`:h.teeLie?'':assumeHint(h,'teeDist')}
-      ${h.teeLie==='green'?((h.derived||{}).teeLie?derivedNote(h,'teeLie'):`<span class="small muted">Drove the green. Your first putt below covers it.</span>`):''}
+      ${distField('teeDist',teeChoices(h.len),u,toShow('teeDist',h.teeDist),'Distance left after tee shot')}${assumeHint(h,'teeDist')}`:''}
+      ${S.editSec==='tee'&&teeDone(h)?`<button class="btn small" style="justify-self:start" data-act="editsec" data-val="">Done</button>`:''}`}
     </section>`:''}
 
-    <section id="sec-atg" class="sec${uns(h,['atg','atgLie','atgDist','atgShots'])}${asm(h,['atgLie','atgDist'])}"><div class="lab"><h3>Chip, pitch or bunker shot</h3><span class="small muted">within 30 ${u}, off the green</span></div>
-      <div class="seg"><button class="${!h.atg?'on':''}" data-act="set" data-field="atg" data-val="0">None</button><button class="${h.atg?'on':''}" data-act="set" data-field="atg" data-val="1">Yes, I had one</button></div>${derivedNote(h,'atg')}
-      ${h.atg?`<span class="small muted">Where was the first one from?</span>
-        <div class="chips wide">${LIES_ATG.map(([k,l])=>chip('atgLie',k,l,h.atgLie===k)).join('')}</div>${assumeHint(h,'atgLie')}
-        <div class="lab"><span class="small muted">Distance to the hole</span><span class="small muted">${isYd()?'yards':'metres'}</span></div>
-        ${distField('atgDist',ATG_CH,u,toShow('atgDist',h.atgDist),'Short game distance')}${assumeHint(h,'atgDist')}
-        <div class="row between"><span class="small muted">How many short-game shots before you were on the green?</span>${stepper('atgShots',h.atgShots||1)}</div>`:''}
-    </section>
+    ${par>=4&&h.teeLie==='green'?'':`<section id="sec-atg" class="sec${uns(h,['atg','atgLie','atgDist','atgShots'])}${asm(h,['atgLie','atgDist'])}"><div class="lab"><h3>${par===3?'Tee shot: where did it finish?':'Approach: where did it finish?'}</h3></div>
+      ${appDone(h)&&S.editSec!=='app'?`<button class="sumpill" data-act="editsec" data-val="app"><span>${esc(appSummary(h))}</span><u>Edit</u></button>`:`
+      ${par===3&&S.clubs?`<span class="small muted">Club</span><div class="chips wide">${BAG.filter(([k])=>!['driver','3wood','lw'].includes(k)).map(([k,l])=>chip('teeClub',k,l,h.teeClub===k)).join('')}</div>`:''}
+      <span class="small muted">The flag is always in the middle. On the green, tap where you finished compared with it. Missed it, tap the side.</span>
+      ${appTarget(h)}
+      ${S.editSec==='app'&&appDone(h)?`<button class="btn small" style="justify-self:start" data-act="editsec" data-val="">Done</button>`:''}`}
+    </section>`}
 
     <section id="sec-putt" class="sec${uns(h,['putts','fp'])}${asm(h,['putts','fp'])}"><div class="lab"><h3>Putting</h3></div>
       <div class="chips">${[0,1,2,3,4].map(p=>chip('putts',p,p,Number(h.putts)===p&&h.putts!=null,p===0?(h.pickup?'none':'holed off green'):p===1?'putt':'putts')).join('')}</div>${derivedNote(h,'putts')}${h.atg&&Number(h.atgShots||1)===1&&h.putts!=null&&Number(h.putts)<=1?`<span class="savepill">✓ ${h.atgLie==='sand'?'Sand save':'Up and down'}</span>`:''}
@@ -1836,6 +1950,7 @@ function vHole(){
       <div class="chips">${(h.pickLie==='green'?(isFt()?[3,6,10,15,20,30,40,60]:[1,2,3,5,8,10,15,20]):[5,10,20,30,50,75,100,125,150,200]).map(v=>chip('pickDist',v,v,h.pickDist!=null&&Math.abs((h.pickLie==='green'?toShow('fp',h.pickDist):toShow('teeDist',h.pickDist))-v)<0.01)).join('')}</div>`:''}
     </section>`:''}
     <section id="sec-pen" class="sec${uns(h,['penOther'])}"><div class="row between"><div><h3>Other penalty strokes</h3><span class="small muted">Water, OB or unplayable after the tee shot</span></div>${stepper('penOther',h.penOther||0)}</div></section>
+    ${holeSheet(h)}
 
   </div>`;
 }
@@ -2196,6 +2311,9 @@ document.addEventListener('click',e=>{
     case 'wizgo': S.wiz=Number(val); window.scrollTo(0,0); break;
     case 'libcat': S.libCat=val; break;
     case 'homeall': S.homeAll=!S.homeAll; break;
+    case 'dispkind': S.dispKind=val; break;
+    case 'dispclub': S.dispClub=val; break;
+    case 'dispband': S.dispBand=val; break;
     case 'compreload': loadComp(true); return;
     case 'comptest': S.comp.screen='board'; S.comp.test=val; S.comp.msg=''; window.scrollTo(0,0); break;
     case 'compback': S.comp.screen='list'; S.comp.msg=''; window.scrollTo(0,0); break;
@@ -2250,13 +2368,27 @@ document.addEventListener('click',e=>{
     case 'talkfrom': S.view='talk'; break;
     case 'edithole': S.editHole=!S.editHole; break;
     case 'hpar': { const h=hole(); h.par=Number(val); saveDraft(); saveRoundCourse(); break; }
-    case 'set': setField(b.dataset.field,val); break;
+    case 'set': setField(b.dataset.field,val); if(S.sheet&&['fp','atgLie','atgDist'].includes(b.dataset.field)) sheetAutoClose(); break;
+    case 'teezone': { const h=hole();
+      if(val==='fw'){ h.teeSide=null; if(h.teePen==='drop'||h.teePen==='retee') setField('teePen','none'); setField('teeLie','fairway'); S.sheet=null; }
+      else { h.teeSide=val; S.sheet='tee'; S.sheetPen=h.teePen==='drop'||h.teePen==='retee'; if(h.teeLie==='fairway'||h.teeLie==='green') h.teeLie=null; saveDraft(); }
+      break; }
+    case 'teelie': { const h=hole(); if(val==='pen'){ S.sheetPen=true; if(!h.teeLie||h.teeLie==='fairway') setField('teeLie','rough'); } else { S.sheetPen=false; if(h.teePen==='drop'||h.teePen==='retee') setField('teePen','none'); setField('teeLie',val); } sheetAutoClose(); break; }
+    case 'teepen': setField('teePen',val); sheetAutoClose(); break;
+    case 'appzone': { const h=hole();
+      if(val.startsWith('g-')){ h.appCell=val.slice(2); h.appMiss=null; setField('atg','0'); S.sheet='putt'; }
+      else { h.appMiss=val.slice(2); h.appCell=null; if(!h.atg) setField('atg','1'); else saveDraft(); S.sheet='miss'; }
+      S.editSec=null; break; }
+    case 'holedout': setField('putts','0'); sheetAutoClose(); break;
+    case 'sheetclose': S.sheet=null; S.sheetPen=false; break;
+    case 'sheetchange': { const h=hole(); if(S.sheet==='tee') h.teeSide=null; else { h.appCell=null; h.appMiss=null; } S.sheet=null; S.sheetPen=false; saveDraft(); break; }
+    case 'editsec': S.editSec=val||null; break;
     case 'step': { const f=b.dataset.field, h=hole(); const min=f==='atgShots'||f==='score'?1:0; setField(f,Math.max(min,Number(h[f]||0)+Number(b.dataset.d))); S.scrollTo=null; break; }
     case 'openexact': S.openExact[b.dataset.field]=true; render(); { const el=document.getElementById('in_'+b.dataset.field); if(el) el.focus(); } return;
     case 'closeexact': S.openExact[b.dataset.field]=false; break;
-    case 'goto': S.idx=Number(b.dataset.i); S.openExact={}; S.editHole=false; saveDraft(); window.scrollTo(0,0); break;
-    case 'prev': if(S.idx>0){ S.idx--; S.openExact={}; S.editHole=false; window.scrollTo(0,0);} break;
-    case 'next': S.idx++; S.openExact={}; S.editHole=false; window.scrollTo(0,0); syncDraftToDb(); break;
+    case 'goto': S.sheet=null; S.editSec=null; S.idx=Number(b.dataset.i); S.openExact={}; S.editHole=false; saveDraft(); window.scrollTo(0,0); break;
+    case 'prev': S.sheet=null; S.editSec=null; if(S.idx>0){ S.idx--; S.openExact={}; S.editHole=false; window.scrollTo(0,0);} break;
+    case 'next': S.sheet=null; S.editSec=null; S.idx++; S.openExact={}; S.editHole=false; window.scrollTo(0,0); syncDraftToDb(); break;
     case 'finish': S.round.holes.forEach(h=>commitAssumptions(h)); S.round.flagFixed=0; saveDraft(); S.view='review'; S.viewing=null; S.saveMsg=''; window.scrollTo(0,0); break;
     case 'backholes': S.view='hole'; window.scrollTo(0,0); break;
     case 'flagfix': { const x=(S._fx||[])[Number(val)]; if(x){ x.f(); S.round.flagFixed=(S.round.flagFixed||0)+1; saveDraft(); } break; }
