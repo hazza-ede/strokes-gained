@@ -96,14 +96,23 @@ const hsg=h=>holeSG(assumeHole(h,myHcp(S.round)).h,resolveBase(S.base,S.round));
 const fixedBase=()=>S.base==='me'?String(myHcp(null)):resolveBase(S.base,null);
 
 // ================= analysis =================
-function puttBucket(m){ const [a,b]=isFt()?[6*FT,20*FT]:[2,6]; return m<a?'short':m<=b?'mid':'long'; }
+// First-putt buckets follow the PGA Tour's ShotLink putting ranges: inside 3 ft, 3–5, 5–10, 10–15, 15–20, 20–25, over 25 ft
+// (metres: 1, 1.5, 3, 4.5, 6, 7.5).
+const PUTT_BK=['3','5','10','15','20','25','long'];
+function puttBucket(m){ const t=isFt()?[3*FT,5*FT,10*FT,15*FT,20*FT,25*FT]:[1,1.5,3,4.5,6,7.5]; const i=t.findIndex(x=>m<x); return PUTT_BK[i<0?6:i]; }
 function appBucket(m){ const t=isYd()?[100*YD,150*YD,200*YD]:[100,150,200]; return m<t[0]?'app-100':m<=t[1]?'app-150':m<=t[2]?'app-200':'app-200p'; }
 function moverInfo(k){
   const u=fullU(), f=isFt();
   return {
+    'putt-3':[f?'Putts inside 3 ft':'Putts inside 1 m',`Tap-in range. Hole 50 in a row from ${f?'2 ft':'60 cm'}, then ${f?'3 ft':'1 m'}, and keep the same routine on the course.`],
+    'putt-5':[f?'Putts from 3–5 ft':'Putts from 1–1.5 m',`Gate drill from ${f?'4 ft':'1.2 m'}: two tees just wider than the ball. Hole 20 in a row before you leave.`],
+    'putt-10':[f?'Putts from 5–10 ft':'Putts from 1.5–3 m',`Clock drill at ${f?'6 and 8 ft':'2 and 2.5 m'}: six balls round the hole, full routine each one. Tour players hole about half from 8 ft.`],
+    'putt-15':[f?'Putts from 10–15 ft':'Putts from 3–4.5 m',`Read and roll from ${f?'10–15 ft':'3–4.5 m'}: commit to a start line and get the speed to finish just past the hole.`],
+    'putt-20':[f?'Putts from 15–20 ft':'Putts from 4.5–6 m',`Ladder from ${f?'15 and 20 ft':'4.5 and 6 m'}: every putt has to finish within ${f?'2 ft':'60 cm'} past the hole if it misses.`],
+    'putt-25':[f?'Putts from 20–25 ft':'Putts from 6–7.5 m',`Two-putt game from ${f?'20–25 ft':'6–7.5 m'}: every first putt has to finish inside ${f?'3 ft':'a metre'}.`],
     'putt-short':[f?'Putts inside 6 ft':'Putts inside 2 m',`Gate drill: two tees just wider than the ball, 50 putts from ${f?'3–6 ft':'1–2 m'} before each round.`],
     'putt-mid':[f?'Putts from 6–20 ft':'Putts from 2–6 m',`Ladder drill at ${f?'6, 12 and 18 ft':'2, 4 and 6 m'}. Commit to a start line and stay at each distance until you hole 7 of 10.`],
-    'putt-long':[f?'Lag putts over 20 ft':'Lag putts over 6 m',`Speed work: putt from ${f?'30, 45 and 60 ft':'10, 15 and 20 m'} and try to finish every ball within ${f?'3 ft':'a metre'} past the hole.`],
+    'putt-long':[f?'Lag putts over 25 ft':'Lag putts over 7.5 m',`Speed work: putt from ${f?'30, 45 and 60 ft':'10, 15 and 20 m'} and try to finish every ball within ${f?'3 ft':'a metre'} past the hole.`],
     'app-100':[`Approaches inside 100 ${u}`,'Build a wedge chart: three swing lengths with each wedge, ten balls each, and write down the carries.'],
     'app-150':[`Approaches from 100–150 ${u}`,`On the range, call a target at 110, 130 or 150 ${u} before each ball and score how many finish within 10 ${u}.`],
     'app-200':[`Approaches from 150–200 ${u}`,'Aim at the middle of the green, not the flag, and take enough club to get there.'],
@@ -175,10 +184,10 @@ function insights(r,base){
   const out=[];
   const order=CATS.map(([k,l])=>({k,l,v:t[k]})).sort((a,b)=>a.v-b.v);
   const worst=order[0], best=order[order.length-1];
-  const putts={short:[0,0],mid:[0,0],long:[0,0]}, app={};
+  const putts={}, app={};
   let fw=0,tees=0,pens=0;
   r.holes.forEach((h,i)=>{ const s=per[i]; if(!s.ok) return;
-    if(Number(h.putts)>0){ const b=puttBucket(Number(h.fp)); putts[b][0]+=s.putt; putts[b][1]++; }
+    if(Number(h.putts)>0){ const b=puttBucket(Number(h.fp)); putts[b]=putts[b]||[0,0]; putts[b][0]+=s.putt; putts[b][1]++; }
     if(s.nApp>0){ const b=appBucket(Number(h.par)===3?Number(h.len):(h.teeLie==='green'?0:Number(h.teeDist))); app[b]=app[b]||[0,0]; app[b][0]+=s.app; app[b][1]++; }
     if(Number(h.par)>=4){ tees++; if(h.teeLie==='fairway'||h.teeLie==='green') fw++; if(h.teePen&&h.teePen!=='none') pens++; }
   });
@@ -303,11 +312,13 @@ const GOAL_EVERY=3;
 // A new set of suggested goals arrives every 3 rounds, built from the biggest shot losses in the last 6.
 function ensureGoals(){
   const rs=chrono(countedRounds()), want=Math.floor(rs.length/GOAL_EVERY); let changed=false;
+  // Putting used to have three wide ranges; rebuild goals made with them so they use the finer buckets.
+  if(S.goals.sets.some(x=>x.items.some(g=>/^putt-/.test(g.k)&&!x.v3))){ S.goals={sets:[],focus:[]}; changed=true; }
   while(S.goals.sets.length<want){
     const k=S.goals.sets.length, upto=rs.slice(0,(k+1)*GOAL_EVERY), recent=upto.slice(-6);
     const nm=needleMovers(recent);
     const items=nm.list.slice(0,3).map(x=>({k:x.k,title:x.title,base:+x.v.toFixed(2),target:+(x.v*0.5).toFixed(2)}));
-    S.goals.sets.push({n:upto.length,date:upto[upto.length-1].date,items});
+    S.goals.sets.push({n:upto.length,date:upto[upto.length-1].date,items,v3:1});
     S.goals.focus=items.slice(0,2).map(x=>x.k); changed=true;
   }
   if(changed){ lsSet('sg.goals',S.goals); saveProfile(); }
@@ -516,6 +527,10 @@ const DRILL_LIB=[
   D('speed','Speed sets',{'ott-fw':1},['range','home'],10,15,'Technique','Three sets of five swings at full speed with a driver or alignment stick, resting between sets.','Feel faster each set.'),
   D('strike','Strike check',{'ott-fw':.6,'ott-rough':.5},['range'],10,15,'Technique','Spray foot powder on the driver face and hit ten. Find the centre and keep it there.','Centre strikes out of 10.')
 ];
+// Drills were written for three putting ranges; spread them over the finer buckets.
+const PUTT_SPREAD={'putt-short':{'putt-3':1,'putt-5':1,'putt-10':.6},'putt-mid':{'putt-10':1,'putt-15':1,'putt-20':1,'putt-25':.5},'putt-long':{'putt-20':.5,'putt-25':1,'putt-long':1}};
+DRILL_LIB.forEach(d=>{ Object.entries(d.areas).forEach(([k,v])=>{ const sp=PUTT_SPREAD[k]; if(sp) Object.entries(sp).forEach(([nk,w])=>{ d.areas[nk]=Math.max(d.areas[nk]||0,v*w); }); }); Object.keys(PUTT_SPREAD).forEach(k=>delete d.areas[k]); });
+
 DRILL_LIB.forEach(d=>{ if(DRILL_ART[d.id]) d.art=DRILL_ART[d.id]; if(!d.steps&&DRILL_STEPS[d.id]){ const st=DRILL_STEPS[d.id]; d.steps=()=>st; } });
 const WARMUPS={range:'Wedges up to driver, a few balls each, easy tempo.',green:'Short putts first, then a few long ones to feel the speed.',short:'A few easy chips and pitches to wake the hands up.',home:'Some easy swings and short putts on the carpet.'};
 function rng(seed){ let x=seed*9301+49297; return ()=>{ x=(x*9301+49297)%233280; return x/233280; }; }
@@ -706,7 +721,7 @@ function render(){
   if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='mygolf'; S.myTab='mates'; } if(S.statsTab==='mates'){ S.statsTab='overview'; S.view==='stats'&&(S.view='mygolf',S.myTab='mates'); }
   strip.hidden=S.view!=='hole'; tabs.hidden=!tabViews.includes(S.view);
   document.body.classList.toggle('holeview',S.view==='hole');
-  const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,learn:vLearn,auth:vAuth,setup:vSetup,hole:vHole,review:vReview,talk:vTalk,results:vResults,share:vShare}[S.view];
+  const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,learn:vLearn,auth:vAuth,setup:vSetup,hole:vHole,review:vReview,planwiz:vPlanWiz,talk:vTalk,results:vResults,share:vShare}[S.view];
   app.innerHTML=v();
   if(S.view==='hole') strip.innerHTML=vStrip();
   let md=document.getElementById('modal'); if(!md){ md=document.createElement('div'); md.id='modal'; document.body.appendChild(md); }
@@ -1174,6 +1189,56 @@ function buildBlock(focus,opt){
 }
 const saveBlock=()=>{ lsSet('sg.block',S.block); };
 function moverTitle(k){ return (moverInfo(k)||[k])[0]; }
+function planCta(){
+  if(S.block){ const B=S.block, cur=B.sessions.find(x=>!x.done); return cur?`<button class="card ctacard" data-act="imptab" data-val="plan"><span><span class="eyebrow">Your 4-week plan · week ${cur.w}</span><b>Next: ${esc(moverTitle(cur.k))}${cur.day?` · ${dayName(cur.day)}`:''}</b></span><i>›</i></button>`:''; }
+  if(!blockLeaks().length) return '';
+  return `<button class="card ctacard new" data-act="wizopen"><span><span class="eyebrow">New</span><b>Build a 4-week plan around your leaks</b><span class="small muted">Drills, tests and targets for your handicap</span></span><i>›</i></button>`;
+}
+function planIntro(){
+  const leaks=blockLeaks();
+  if(!leaks.length) return `<div class="card muted">Save a couple of rounds and your 4-week plan is built from where you lose the most shots.</div>`;
+  return `<div class="hero planintro"><span class="eyebrow">4-week plan</span><h2 class="herohead">Fix your biggest leak in <span class="hl">4 weeks</span>.</h2>
+    <div class="stack" style="gap:10px">${[['1','Pick what to work on','From where your rounds are losing shots'],['2','Choose your days and time','1 to 7 sessions a week'],['3','Test, train, re-test','A test in week 1 and again in week 4 shows what changed']].map(([n,t,d])=>`<div class="introstep"><span class="stepn">${n}</span><span><b>${t}</b><span class="small">${d}</span></span></div>`).join('')}</div>
+    <button class="btn big gold" data-act="wizopen">Create my plan</button></div>`;
+}
+const WIZ=['What to work on','When you can practise','Where you can practise','Check your plan'];
+function vPlanWiz(){
+  const st=S.wiz||0, leaks=blockLeaks(), sel=S.blockFocus||leaks.slice(0,2).map(x=>x.k), o=blockOpts();
+  const ok=[sel.length>0,o.days.length>0,o.places.length>0,true][st];
+  let body='';
+  if(st===0) body=`<p class="muted">Your biggest leaks from your last rounds. Pick one or two.</p>
+    <div class="stack" style="gap:8px">${leaks.map(x=>`<button class="leakpick ${sel.includes(x.k)?'on':''}" data-act="blockfocus" data-val="${x.k}"><span><b>${esc(x.title)}</b><span class="small muted">Costing you ${(-x.v).toFixed(1)} shots a round</span></span><i>${sel.includes(x.k)?'✓':''}</i></button>`).join('')}</div>`;
+  if(st===1) body=`<p class="muted">Tap the days you can practise.</p>
+    <div class="daychips">${DAYS.map(([k,l])=>`<button class="${o.days.includes(k)?'on':''}" data-act="blockday" data-val="${k}">${l}</button>`).join('')}</div>
+    <span class="small muted">${o.days.length} session${o.days.length===1?'':'s'} a week · ${o.days.length*4} over the 4 weeks</span>
+    <h3 style="margin-top:14px">Time per session</h3><div class="chips">${[30,45,60,90].map(v=>`<button class="chip ${o.mins===v?'on':''}" data-act="blockmins" data-val="${v}">${v}<span class="sub">min</span></button>`).join('')}</div>`;
+  if(st===2){ const noRange=!o.places.includes('range');
+    body=`<p class="muted">Tick everywhere you can get to.</p>
+    <div class="chips wide">${PLACES.map(([k,l])=>`<button class="chip ${o.places.includes(k)?'on':''}" data-act="blockplace" data-val="${k}">${l}</button>`).join('')}</div>
+    ${wizMissing(sel,o)}
+    <div class="card setrow" style="margin-top:14px"><div><b>Keep the rest of my game sharp</b><div class="small muted">${noRange?'Adds a short block for the parts of your game you\'re not focusing on. Tick the range to include driving and irons.':`Adds ${o.mins>=60?20:o.mins>=45?15:10} minutes of long game to ${o.mins>=45?'every session':'every second session'}, so your strengths don't slip.`}</div></div><button class="switch ${o.sharp?'on':''}" data-act="blocksharp" aria-label="Keep the rest of my game sharp" aria-pressed="${o.sharp}"></button></div>`; }
+  if(st===3){ const pl=o.places.map(k=>(PLACES.find(x=>x[0]===k)||[,k])[1]).join(', ');
+    const row=(l,v,step)=>`<div class="sumrow"><span class="small muted">${l}</span><b>${v}</b><button class="linkbtn small" data-act="wizgo" data-val="${step}">Change</button></div>`;
+    body=`<div class="card stack" style="gap:0">${row('Working on',sel.map(k=>esc(moverTitle(k))).join(' and '),0)}${row('Days',o.days.map(dayName).join(', '),1)}${row('Each session',o.mins+' min',1)}${row('Where',esc(pl),2)}${row('Keep the rest sharp',o.sharp?'Yes':'No',2)}</div>
+    ${wizMissing(sel,o)}
+    <p class="small muted">${o.days.length*4} sessions. Week 1 starts with a short test, and week 4 ends with the same test so you can see what changed.</p>`; }
+  return `<div class="wiz">
+    <div class="wiztop"><button class="linkbtn" data-act="wizclose">Cancel</button><span class="small muted">Step ${st+1} of 4</span></div>
+    <div class="wizbar">${WIZ.map((_,i)=>`<i class="${i<=st?'on':''}"></i>`).join('')}</div>
+    <h1 class="wizh">${WIZ[st]}</h1>
+    <div class="stack">${body}</div>
+    <div class="wizfoot">${st?`<button class="btn ghost" data-act="wizgo" data-val="${st-1}">Back</button>`:''}${st<3?`<button class="btn big primary" data-act="wizgo" data-val="${st+1}" ${ok?'':'disabled'}>Next</button>`:`<button class="btn big primary" data-act="blockstart">Confirm plan</button>`}</div>
+  </div>`;
+}
+// Inline version of the missing-place question, shown while setting up.
+function wizMissing(sel,o){
+  const miss=sel.filter(k=>!DRILL_LIB.some(d=>(d.areas[k]||0)>=.5&&d.places.some(p=>o.places.includes(p)))); if(!miss.length) return '';
+  const need=[...new Set(miss.flatMap(k=>DRILL_LIB.filter(d=>(d.areas[k]||0)>=.5).flatMap(d=>d.places)))];
+  const add=['green','short','range','home'].find(p=>need.includes(p)); if(!add) return '';
+  const area={putt:'putting',atg:'chipping',app:'approach shots',ott:'driving'}[catOf(miss[0])]||'this';
+  const place=({green:'a putting green',short:'a chipping area',range:'the range',home:'practice at home'})[add];
+  return `<div class="flagnote stack" style="gap:10px"><b>Add ${area} to your plan?</b><span class="small">${esc(miss.map((k,i)=>i?moverTitle(k).toLowerCase():moverTitle(k)).join(' and '))} ${miss.length>1?'are':'is'} costing you shots, but nowhere you've ticked can work on ${miss.length>1?'them':'it'}.</span><button class="btn primary" data-act="blockplace" data-val="${add}">Add ${place}</button></div>`;
+}
 function blockSetupHtml(){
   const leaks=blockLeaks(), sel=S.blockFocus||leaks.slice(0,2).map(x=>x.k), o=blockOpts();
   if(!leaks.length) return `<div class="card muted">Save a couple of rounds and your 4-week plan is built from where you lose the most shots.</div>`;
@@ -1267,7 +1332,7 @@ function missingNote(B){
     <div class="row" style="gap:8px;flex-wrap:nowrap"><button class="btn primary" style="flex:1" data-act="blockaddplace" data-val="${add}">Add ${place}</button><button class="btn ghost" data-act="blockmissno">No thanks</button></div></div>`;
 }
 function blockHtml(){
-  const B=S.block; if(!B) return `${secHead('4-week plan','Built from your rounds, with targets for your handicap')}${blockSetupHtml()}`;
+  const B=S.block; if(!B) return planIntro();
   const total=B.sessions.length, done=B.sessions.filter(x=>x.done).length, cur=B.sessions.findIndex(x=>!x.done), curS=B.sessions[cur]||B.sessions[total-1], week=curS.w;
   const nm=needleMovers(statRounds()).all||{};
   const fx=B.focus.map(k=>{ const v=nm[k]||0; return `<div class="blockgoal"><b>${esc(moverTitle(k))}</b><span>Costing you <b class="neg">${Math.abs(v).toFixed(1)}</b> a round. Target by week 4: <b class="pos">${(Math.abs(v)/2).toFixed(1)}</b></span></div>`; }).join('');
@@ -1282,8 +1347,7 @@ function blockHtml(){
       <button class="btn primary" data-act="blockdone" data-val="${i}">Session done</button>`:''}
     </div>`; };
   const cats=Object.keys(TESTS).filter(c=>B.tests.base[c]!=null);
-  return `${secHead('4-week plan',`Week ${week}: ${WEEK_NAMES[week-1]}`)}
-  <div class="hero blockhero"><span class="eyebrow">Started ${esc(shortDate(B.start))} · ${B.dayList?B.dayList.map(dayName).join(', '):B.days+' a week'}</span>
+  return `<div class="hero blockhero"><span class="eyebrow">Week ${week}: ${WEEK_NAMES[week-1]} · ${B.dayList?B.dayList.map(dayName).join(', '):B.days+' a week'}</span>
     <div class="weekbar">${[1,2,3,4].map(w=>{ const ss=B.sessions.filter(x=>x.w===w), dn=ss.filter(x=>x.done).length; return `<div class="${w<week?'past':w===week?'now':''}"><span>Week ${w}</span><i style="--p:${dn/ss.length}"></i></div>`; }).join('')}</div>
     ${fx}
     <span class="small" style="opacity:.8">${done} of ${total} sessions done</span></div>
@@ -1291,7 +1355,7 @@ function blockHtml(){
   ${reminderCard()}
   ${wk.map(sessHtml).join('')}
   ${cats.length?`<div class="card stack"><h3>Your tests</h3>${cats.map(c=>{ const b=B.tests.base[c], r=B.tests.re[c], T=TESTS[c], lv=levelOf(S.hcp!=null?S.hcp:10); return `<div class="testrow"><span><b>${esc(T.t)}</b><span class="small muted">Typical for ${esc(lv.name)}: ${T.band[lv.n-1]}/${T.max}</span></span><span class="tbars"><i style="width:${b/T.max*100}%"></i>${r!=null?`<i class="re" style="width:${r/T.max*100}%"></i>`:''}</span><span class="small"><b>${b}</b>${r!=null?` → <b class="${r>b?'pos':r<b?'neg':''}">${r}</b>`:' → re-test in week 4'}</span></div>`; }).join('')}</div>`:''}
-  <button class="linkbtn" data-act="blockreset" style="justify-self:start">Start a new 4-week plan</button>`;
+  <button class="btn ghost" data-act="wizopen">Start a new 4-week plan</button>`;
 }
 function planHtml(){
   const P=practicePlan(), placeName=k=>(PLACES.find(x=>x[0]===k)||[,k])[1];
@@ -1373,11 +1437,10 @@ function vImprove(){
   return `
   <div class="top"><span class="brand">Improve</span></div>
   <div class="stack">
-    ${heroImprove()}
-    ${goalsHtml()}
-    ${blockHtml()}
-    ${S.block?'':planHtml()}
-    ${libraryHtml()}
+    ${subTabs('imptab',S.impTab||'overview',[['overview','Overview'],['plan','4-week plan'],['drills','Drills']])}
+    ${(S.impTab||'overview')==='overview'?`${heroImprove()}${planCta()}${goalsHtml()}`:''}
+    ${S.impTab==='plan'?blockHtml():''}
+    ${S.impTab==='drills'?`${S.block?'':planHtml()}${libraryHtml()}`:''}
     ${sample?'':'<!--'}<div class="card stack">
       <h2>Where should I miss?</h2>
       <p class="muted" style="margin:0">Take a photo of the shot in front of you. Claude looks at the hazards and tells you where to aim and which side is the safe miss.</p>
@@ -1902,7 +1965,11 @@ document.addEventListener('click',e=>{
     case 'blockaddplace': { const B=S.block, rem=B.remind; S.block=buildBlock(B.focus,{days:B.dayList,mins:B.mins,places:[...B.places,val],sharp:B.sharp}); S.block.remind=rem; saveBlock(); S.blockOpt={...blockOpts(),places:S.block.places}; if(rem===true&&notifState()==='on') turnOnReminders(true); break; }
     case 'blockplace': { const o=blockOpts(); S.blockOpt={...o,places:o.places.includes(val)?o.places.filter(x=>x!==val):[...o.places,val]}; break; }
     case 'blocksharp': { const o=blockOpts(); S.blockOpt={...o,sharp:!o.sharp}; break; }
-    case 'blockstart': { const f=S.blockFocus||blockLeaks().slice(0,2).map(x=>x.k); if(f.length){ S.block=buildBlock(f,blockOpts()); S.block.remind=true; saveBlock(); if(notifState()==='on'||notifState()==='ask'){ turnOnReminders(); return; } } break; }
+    case 'blockstart': { const f=S.blockFocus||blockLeaks().slice(0,2).map(x=>x.k); if(f.length){ if(S.block&&S.block.remind===true&&sb&&uid) sb.from('push_reminders').update({enabled:false}).eq('user_id',uid).then(()=>{},()=>{}); S.block=buildBlock(f,blockOpts()); S.block.remind=true; saveBlock(); S.view='improve'; S.impTab='plan'; S.wiz=0; window.scrollTo(0,0); if(notifState()==='on'||notifState()==='ask'){ turnOnReminders(); return; } } break; }
+    case 'wizopen': S.view='planwiz'; S.wiz=0; S.blockFocus=null; window.scrollTo(0,0); break;
+    case 'wizclose': S.view='improve'; S.impTab='plan'; window.scrollTo(0,0); break;
+    case 'wizgo': S.wiz=Number(val); window.scrollTo(0,0); break;
+    case 'imptab': S.view='improve'; S.impTab=val; window.scrollTo(0,0); break;
     case 'blockreset': if(S.block&&S.block.remind&&sb&&uid) sb.from('push_reminders').update({enabled:false}).eq('user_id',uid).then(()=>{},()=>{}); S.block=null; saveBlock(); break;
     case 'remindoff': S.block.remind='off'; saveBlock(); S.remindMsg=''; savePushRow(null); break;
     case 'remindon': if(S.block) S.block.remind=true; turnOnReminders(); return;
@@ -2166,7 +2233,7 @@ if(CONFIGURED&&window.supabase){
 }
 window.addEventListener('online',()=>{ if(uid) loadAll(); });
 if('serviceWorker' in navigator&&location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
-if(/[?&]view=improve/.test(location.search)){ S.view='improve'; history.replaceState(null,'',location.pathname); }
+if(/[?&]view=improve/.test(location.search)){ S.view='improve'; S.impTab='plan'; history.replaceState(null,'',location.pathname); }
 // Lock the screen to app-style behaviour: no pinch or double-tap zoom, only scrolling and taps.
 ['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
 document.addEventListener('touchmove',e=>{ if(e.touches&&e.touches.length>1) e.preventDefault(); },{passive:false});
