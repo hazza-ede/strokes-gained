@@ -4,6 +4,10 @@ const CATS=[['ott','Driving'],['app','Approach'],['atg','Short game'],['putt','P
 const LIES_TEE=[['fairway','Fairway'],['rough','Rough'],['sand','Bunker'],['recovery','Trees'],['green','Green']];
 const LIES_ATG=[['fairway','Fringe / fairway'],['rough','Rough'],['sand','Bunker']];
 const CLUBS=[['driver','Driver'],['3wood','3 wood'],['hybrid','Hybrid'],['longiron','Long iron'],['iron','Mid iron']];
+const BAG=[['driver','Driver'],['3wood','3 wood'],['5wood','5 wood'],['hybrid','Hybrid'],['4i','4 iron'],['5i','5 iron'],['6i','6 iron'],['7i','7 iron'],['8i','8 iron'],['9i','9 iron'],['pw','Pitching wedge'],['gw','Gap wedge'],['sw','Sand wedge'],['lw','Lob wedge']];
+const TEE_TO_BAG={driver:'driver','3wood':'3wood',hybrid:'hybrid',longiron:'4i',iron:'7i'};
+const CLUB_RATIO={driver:1,'3wood':.92,'5wood':.87,hybrid:.84,'4i':.8,'5i':.76,'6i':.72,'7i':.68,'8i':.64,'9i':.6,pw:.55,gw:.5,sw:.44,lw:.38};
+const CONDS=[['windy','Windy'],['wet','Wet'],['cold','Cold']];
 const PUTT_M=[0.5,1,1.5,2,2.5,3,4,5,6,8,10,12,15,20];
 const PUTT_FT=[1,2,3,4,5,6,8,10,12,15,20,25,30,40,50,60];
 const ATG_CH=[2,4,6,8,10,12,15,20,25,30];
@@ -39,7 +43,8 @@ function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){}
 const S={
   view:'home', tab:'home',
   mode:lsGet('sg.mode','quick'), putUnit:lsGet('sg.putunit','m'), fullUnit:lsGet('sg.fullunit','m'),
-  smart:lsGet('sg.smart',true), clubs:lsGet('sg.clubs',false),
+  smart:lsGet('sg.smart',true), clubs:lsGet('sg.clubs',false), assumeOn:lsGet('sg.assumeOn',true),
+  bag:lsGet('sg.bag',{}), toughOut:lsGet('sg.toughOut',false), statsWho:'me',
   hcp:lsGet('sg.hcp',null), goal:lsGet('sg.goal',null),
   base:(b=>['me','goal','0','tour'].includes(b)?b:'me')(lsGet('sg.base','me')),
   rounds:lsGet('sg.rounds',[]), courses:lsGet('sg.courses',[]),
@@ -82,7 +87,7 @@ function resolveBase(b,r){ if(b==='me') return String(myHcp(r)); if(b==='goal') 
 function baseText(b,r){ if(b==='me') return `your ${fmtHcp(myHcp(r))} handicap`; if(b==='goal') return `your goal of ${fmtHcp(goalHcp())}`; if(b==='tour') return 'the PGA Tour'; return 'a scratch golfer'; }
 function baseShort(b,r){ return b==='me'?'your '+fmtHcp(myHcp(r)):b==='goal'?'goal '+fmtHcp(goalHcp()):b==='tour'?'PGA Tour':'scratch'; }
 const rsg=(r,b)=>roundSG(r,resolveBase(b,r));
-const hsg=h=>holeSG(h,resolveBase(S.base,S.round));
+const hsg=h=>holeSG(assumeHole(h,myHcp(S.round)).h,resolveBase(S.base,S.round));
 // For trends a fixed benchmark is used, so a falling handicap does not hide improvement.
 const fixedBase=()=>S.base==='me'?String(myHcp(null)):resolveBase(S.base,null);
 
@@ -210,8 +215,74 @@ function spark(vals){
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" aria-hidden="true"><line x1="0" x2="${W}" y1="${H/2}" y2="${H/2}" style="stroke:var(--line)"/><path d="${d}" style="fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round"/><circle cx="${X(n-1)}" cy="${Y(last)}" r="3.5" style="fill:${last>=0?'var(--pos)':'var(--neg)'}"/></svg>`;
 }
 
+// ================= smart assumptions =================
+// When a detail is skipped, fill it with a sensible default and tag it, so logging never stalls.
+// A wrong guess only moves strokes gained between parts of the game on that hole; the hole total is unchanged.
+const statRounds=()=>realRounds().filter(r=>!(S.toughOut&&(r.cond||[]).length));
+function typicalDrive(hcp){ return Math.round(Math.max(150,Math.min(260,245-4*Math.max(-4,Number(hcp)||0)))); }
+function learnedClub(k){ // the golfer's own tee-shot length with a club, once there are 3 real ones
+  const xs=[]; realRounds().forEach(r=>r.holes.forEach(h=>{ if(TEE_TO_BAG[h.teeClub]!==k||Number(h.par)<4||!h.teeLie||h.teeLie==='green'||(h.teePen||'none')!=='none'||h.teeDist==null||(h.assumed||[]).includes('teeDist')||(h.unsure||[]).includes('teeDist')) return; xs.push(Number(h.len)-Number(h.teeDist)); }));
+  if(xs.length<3) return null; xs.sort((a,b)=>a-b); return Math.round(xs[Math.floor(xs.length/2)]);
+}
+function clubDist(k,hcp){ const b=Number(S.bag[k]); if(b>0) return {m:b,src:'bag'}; const l=learnedClub(k); if(l) return {m:l,src:'rounds'}; return {m:Math.round(typicalDrive(hcp)*(CLUB_RATIO[k]||.7)),src:'typical'}; }
+function learnedRatio(kind){ // the golfer's own proximity, after about 5 rounds
+  const rs=realRounds(); if(rs.length<5) return null; const xs=[];
+  rs.forEach(r=>r.holes.forEach(h=>{ const a=[...(h.assumed||[]),...(h.unsure||[])]; if(h.fp==null||a.includes('fp')||!(Number(h.putts)>0)) return;
+    if(kind==='chip'){ if(h.atg&&Number(h.atgShots||1)===1&&Number(h.atgDist)>0&&!a.includes('atgDist')) xs.push(h.fp/h.atgDist); }
+    else if(!h.atg){ const d=Number(h.par)===3?Number(h.len):(h.teeLie&&h.teeLie!=='green'&&!a.includes('teeDist')?Number(h.teeDist):0); if(d>30) xs.push(h.fp/d); } }));
+  if(xs.length<12) return null; xs.sort((a,b)=>a-b); return xs[Math.floor(xs.length/2)];
+}
+function assumeHole(h,hcp){
+  const o=JSON.parse(JSON.stringify(h)), add=[];
+  if(!S.assumeOn||o.score==null||o.score==='') return {h:o,add};
+  const par=Number(o.par), score=Number(o.score), empty=v=>v==null||v==='';
+  const set=(f,v)=>{ o[f]=v; add.push(f); };
+  if(par>=4){
+    if(!o.teeLie) set('teeLie','fairway');
+    if(o.teeLie!=='green'&&empty(o.teeDist)) set('teeDist',Math.max(10,Math.round(Number(o.len)-clubDist(TEE_TO_BAG[o.teeClub]||'driver',hcp).m)));
+  }
+  if(o.atg){
+    if(empty(o.atgDist)) set('atgDist',15);
+    if(!o.atgLie) set('atgLie',Number(o.atgDist)<=10?'fairway':'rough');
+    if(!o.atgShots) o.atgShots=1;
+  }
+  const before=()=>(par>=4?(o.teePen==='retee'?2:1)+(o.teePen&&o.teePen!=='none'?1:0):0)+(o.atg?Number(o.atgShots||1):0)+Number(o.penOther||0);
+  const minApp=par>=4&&o.teeLie==='green'?0:1;
+  if(empty(o.putts)) set('putts',Math.max(0,Math.min(2,score-before()-minApp)));
+  if(Number(o.putts)>0&&empty(o.fp)){
+    let fp;
+    if(o.atg) fp=Math.max(1,Number(o.atgDist)*(learnedRatio('chip')||0.10));
+    else { const d=par===3?Number(o.len):(o.teeLie==='green'?0:Number(o.teeDist)); fp=d?Math.min(20,Math.max(1.5,d*(learnedRatio('app')||0.07*(1+Math.max(0,Number(hcp)||0)/40)))):8; }
+    if(Number(o.putts)===1) fp=Math.min(fp,2.5); if(Number(o.putts)>=3) fp=Math.max(fp,10);
+    set('fp',Math.round(fp*10)/10);
+  }
+  // Score sense-check: the score wins. If assumed putts don't fit, trim them.
+  if(add.includes('putts')){ while(Number(o.putts)>0&&score-Number(o.putts)-before()<minApp) o.putts=Number(o.putts)-1; if(!(Number(o.putts)>0)){ o.fp=null; const i=add.indexOf('fp'); if(i>=0) add.splice(i,1); } }
+  return {h:o,add};
+}
+function commitAssumptions(h,hcp){
+  if(!h||h.score==null||h.score==='') return;
+  const {h:o,add}=assumeHole(h,hcp!=null?hcp:myHcp(S.round)); if(!add.length) return;
+  add.forEach(f=>h[f]=o[f]); h.assumed=[...new Set([...(h.assumed||[]),...add])];
+}
+const ASSUME_DEPS={teeClub:['teeDist','fp'],teeLie:['teeDist','fp'],teeDist:['fp'],teePen:['putts','fp'],atg:['atgLie','atgDist','putts','fp'],atgDist:['atgLie','fp'],atgLie:[],atgShots:['putts','fp'],score:['putts','fp'],putts:['fp'],penOther:['putts','fp']};
+function assumeHint(h,f){
+  if(!S.assumeOn||h.score==null||h.score==='') return '';
+  const {h:o,add}=assumeHole(h,myHcp(S.round)); if(!add.includes(f)) return '';
+  const v=o[f], u=fullU();
+  const txt=f==='teeLie'?(LIES_TEE.find(x=>x[0]===v)||[,'Fairway'])[1].toLowerCase():f==='atgLie'?(LIES_ATG.find(x=>x[0]===v)||[,''])[1].toLowerCase()
+    :f==='fp'?`${toShow('fp',v)} ${puttU()}`:f==='putts'?`${v} putt${v===1?'':'s'}`:`${toShow(f,v)} ${u}`;
+  return `<span class="small muted hint">Skip it and we'll assume ${esc(txt)}${f==='teeDist'?' left':''}.</span>`;
+}
+const asm=(h,fields)=>fields.some(f=>(h.assumed||[]).includes(f))?' assumed':'';
+// Profile (handicap, goal, bag, preferences) follows the golfer between phones.
+let profTimer=null;
+function saveProfile(){ lsSet('sg.profileAt',Date.now()); clearTimeout(profTimer); profTimer=setTimeout(()=>{ if(sb&&uid) sb.from('profiles').update({data:{hcp:S.hcp,goal:S.goal,bag:S.bag,assumeOn:S.assumeOn,at:Date.now()}}).eq('id',uid).then(()=>{},()=>{}); },800); }
+
 // ================= render =================
 const ICONS={
+  improve:'<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  mygolf:'<circle cx="12" cy="8" r="3.6"/><path d="M4.5 21c0-4.1 3.4-7.5 7.5-7.5s7.5 3.4 7.5 7.5"/>',
   learn:'<path d="M4 5.5A1.5 1.5 0 015.5 4H11v16H5.5A1.5 1.5 0 014 18.5z"/><path d="M20 5.5A1.5 1.5 0 0018.5 4H13v16h5.5a1.5 1.5 0 001.5-1.5z"/>',
   home:'<path d="M6 21V4l10 4-10 4"/><path d="M3 21h18"/>',
   stats:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
@@ -220,13 +291,14 @@ const ICONS={
 };
 function render(){
   const app=document.getElementById('app'), strip=document.getElementById('strip'), tabs=document.getElementById('tabs');
-  const tabViews=['home','stats','learn','mates','settings'];
+  const tabViews=['home','stats','improve','mygolf'], TABL={home:'Rounds',stats:'Stats',improve:'Improve',mygolf:'My golf'};
+  if(S.view==='learn') S.view='improve'; if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='stats'; S.statsWho='mates'; }
   strip.hidden=S.view!=='hole'; tabs.hidden=!tabViews.includes(S.view);
   document.body.classList.toggle('holeview',S.view==='hole');
-  const v={home:vHome,stats:vStats,mates:vMates,settings:vSettings,learn:vLearn,auth:vAuth,setup:vSetup,hole:vHole,talk:vTalk,results:vResults,share:vShare}[S.view];
+  const v={home:vHome,stats:vStats,mygolf:vMyGolf,improve:vImprove,auth:vAuth,setup:vSetup,hole:vHole,talk:vTalk,results:vResults,share:vShare}[S.view];
   app.innerHTML=v();
   if(S.view==='hole') strip.innerHTML=vStrip();
-  if(!tabs.hidden) tabs.innerHTML=`<div class="in">${tabViews.map(t=>`<button class="${S.view===t?'on':''}" data-act="tab" data-val="${t}" aria-label="${t}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[t]}</svg>${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div>`;
+  if(!tabs.hidden) tabs.innerHTML=`<div class="in">${tabViews.map(t=>`<button class="${S.view===t?'on':''}" data-act="tab" data-val="${t}" aria-label="${t}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[t]}</svg>${TABL[t]}</button>`).join('')}</div>`;
   if(S.scrollTo){ const el=document.getElementById(S.scrollTo); S.scrollTo=null; if(el){ const rm=matchMedia('(prefers-reduced-motion: reduce)').matches; el.scrollIntoView({block:'nearest',behavior:rm?'auto':'smooth'}); } }
 }
 function baseChips(r){
@@ -242,7 +314,7 @@ const sampleTag=on=>on?'<span class="tag">Sample data</span>':'';
 
 // ----- home -----
 function vHome(){
-  const real=realRounds(), showing=real.length?real:[EXAMPLE_ROUND];
+  const real=statRounds(), showing=real.length?real:[EXAMPLE_ROUND];
   const avg={ott:0,app:0,atg:0,putt:0,total:0};
   showing.forEach(r=>{ const {t}=rsg(r,S.base); CATS.forEach(([k])=>avg[k]+=t[k]); avg.total+=t.total; });
   Object.keys(avg).forEach(k=>avg[k]/=showing.length);
@@ -251,7 +323,7 @@ function vHome(){
   <div class="top"><span class="brand">Strokes Gained</span><span class="muted small">${uid?'Synced':'Saved on this phone'}</span></div>
   <div class="stack">
     <h1>Where your shots go</h1>
-    <div class="small muted">Handicap <b class="num">${S.hcp!=null?esc(fmtHcp(S.hcp)):'not set'}</b> · Goal <b class="num">${esc(fmtHcp(goalHcp()))}</b> · <button class="linkbtn" data-act="tab" data-val="settings">Change</button></div>
+    <div class="small muted">Handicap <b class="num">${S.hcp!=null?esc(fmtHcp(S.hcp)):'not set'}</b> · Goal <b class="num">${esc(fmtHcp(goalHcp()))}</b> · <button class="linkbtn" data-act="tab" data-val="mygolf">Change</button></div>
     ${draft?`<button class="btn big primary" data-act="resume">Resume round · ${esc(S.round.course)} · hole ${S.idx+1}</button>`:''}
     <button class="btn big ${draft?'':'primary'}" data-act="newround">Start a new round</button>
     <div class="card stack">
@@ -261,16 +333,15 @@ function vHome(){
       ${bars(avg)}
       <div class="row between"><span class="muted">Total strokes gained per round</span><b class="bigsg ${cls(avg.total)}" style="font-size:2rem">${f1(avg.total)}</b></div>
     </div>
-    ${vPath(showing,!real.length)}
     <h3>Rounds</h3>
-    <div class="stack">${allRounds().map(r=>{ const {t}=rsg(r,S.base); return `<button class="roundrow" data-act="open" data-id="${esc(r.id)}"><span><b>${esc(r.course)}</b>${r.example?' <span class="tag">Example</span>':''}<br><span class="small muted">${fmtDate(r.date)} · ${r.holes.length} holes · shot ${t.score}</span></span><span class="bigsg ${cls(t.total)}" style="font-size:1.6rem">${f1(t.total)}</span></button>`; }).join('')}</div>
+    <div class="stack">${allRounds().map(r=>{ const {t}=rsg(r,S.base); return `<button class="roundrow" data-act="open" data-id="${esc(r.id)}"><span><b>${esc(r.course)}</b>${r.example?' <span class="tag">Example</span>':''}${condTags(r)}<br><span class="small muted">${fmtDate(r.date)} · ${r.holes.length} holes · shot ${t.score}</span></span><span class="bigsg ${cls(t.total)}" style="font-size:1.6rem">${f1(t.total)}</span></button>`; }).join('')}</div>
   </div>`;
 }
 function vPath(rounds,isExample){
   const p=needleMovers(rounds), g=fmtHcp(goalHcp());
   const top=p.list.slice(0,4), max=Math.max(0.5,...top.map(x=>-x.v));
   const head = p.gap<-0.1 ? `You're losing about <b class="num neg">${Math.abs(p.gap).toFixed(1)}</b> shots a round to a ${esc(g)} golfer. Here's where they are.`
-    : `You're already playing to ${esc(g)} or better across these rounds. Set a lower goal in Settings to find your next shots.`;
+    : `You're already playing to ${esc(g)} or better across these rounds. Set a lower goal in My golf to find your next shots.`;
   return `<div class="card stack">
     <div class="row between"><h2>Path to ${esc(g)}</h2>${sampleTag(isExample)}</div>
     <p style="margin:0">${head}</p>
@@ -284,8 +355,11 @@ function vPath(rounds,isExample){
 }
 
 // ----- stats -----
+const whoSeg=()=>seg('statswho',S.statsWho,[['me','Me'],['mates','Mates']]);
+const condTags=r=>(r.cond||[]).map(c=>` <span class="tag soft">${esc((CONDS.find(x=>x[0]===c)||[,c])[1])}</span>`).join('');
 function vStats(){
-  const real=realRounds(), rs=real.length?chrono(real):[EXAMPLE_ROUND], ex=!real.length;
+  if(S.statsWho==='mates') return vMates();
+  const real=statRounds(), anyCond=realRounds().some(r=>(r.cond||[]).length), rs=real.length?chrono(real):[EXAMPLE_ROUND], ex=!real.length;
   const base=fixedBase();
   const sg=rs.map(r=>roundSG(r,base).t);
   const per18=(t,k)=>t.holes?t[k]*18/t.holes:0;
@@ -300,6 +374,8 @@ function vStats(){
   return `
   <div class="top"><span class="brand">Stats</span>${sampleTag(ex)}</div>
   <div class="stack">
+    ${whoSeg()}
+    ${anyCond?`<div class="card"><div class="setrow"><div>Leave out windy, wet or cold rounds<div class="small muted">So tough days don't drag your numbers down.</div></div><button class="switch ${S.toughOut?'on':''}" data-act="toggle" data-val="toughOut" aria-label="Leave out tough-condition rounds" aria-pressed="${S.toughOut}"></button></div></div>`:''}
     <div class="card stack">
       <h2>Progress</h2>
       <span class="small muted">Strokes gained per 18 holes vs ${esc(S.base==='me'?`your current ${fmtHcp(myHcp(null))} handicap`:baseText(S.base,null))}. The green line is your 3-round average.</span>
@@ -350,14 +426,15 @@ function mateRows(){
 }
 const nameOf=id=>id===uid?'You':(S.names[id]||'A mate');
 function vMates(){
-  if(!uid) return `<div class="top"><span class="brand">Mates</span></div><div class="card stack"><h2>Compare with your mates</h2><p class="muted" style="margin:0">Sign in to compare with your mates. Your rounds still save on this phone.</p></div>`;
+  if(!uid) return `<div class="top"><span class="brand">Stats</span></div><div class="stack">${whoSeg()}<div class="card stack"><h2>Compare with your mates</h2><p class="muted" style="margin:0">Sign in to compare with your mates. Your rounds still save on this phone.</p></div></div>`;
   const rows=mateRows().sort((a,b)=>b.total-a.total);
   const crowns=CATS.map(([k,l])=>{ const best=[...rows].sort((a,b)=>b[k]-a[k])[0]; return best?{l:{ott:'Best driver',app:'Best iron player',atg:'Best short game',putt:'Best putter'}[k],who:nameOf(best.id),v:best[k]}:null; }).filter(Boolean);
   const weekAgo=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
   let rotw=null; (S.mates||[]).forEach(p=>(Array.isArray(p.rounds)?p.rounds:[]).forEach(r=>{ if(r&&r.sm&&String(r.date)>=weekAgo&&Number(r.holes)>0){ const v=Number(r.sm.total)*18/Number(r.holes); if(!rotw||v>rotw.v) rotw={id:p._id,v,r}; } }));
   return `
-  <div class="top"><span class="brand">Mates</span><span class="small muted">${S.matesState==='loading'?'<span class="spinner"></span> Loading':S.matesState==='slow'?'Can\'t reach the group right now':'<button class="btn ghost small" data-act="refreshmates">Refresh</button>'}</span></div>
+  <div class="top"><span class="brand">Stats</span><span class="small muted">${S.matesState==='loading'?'<span class="spinner"></span> Loading':S.matesState==='slow'?'Can\'t reach the group right now':'<button class="btn ghost small" data-act="refreshmates">Refresh</button>'}</span></div>
   <div class="stack">
+    ${whoSeg()}
     <div class="card"><div class="setrow"><div><b>Share my stats with the group</b><div class="small muted">Everyone signed in to the app sees your rounds' strokes gained, not your hole-by-hole detail.</div></div><button class="switch ${S.sharing?'on':''}" data-act="sharing" aria-label="Share my stats" aria-pressed="${S.sharing}"></button></div></div>
     ${rotw?`<div class="card stack"><h3>Round of the week</h3><div class="row between"><div><b>${esc(nameOf(rotw.id))}</b><div class="small muted">${esc(rotw.r.course)} · ${esc(shortDate(rotw.r.date))} · shot ${Number(rotw.r.score)}</div></div><b class="bigsg ${cls(rotw.v)}" style="font-size:2rem">${f1(rotw.v)}</b></div><span class="small muted">Most strokes gained against their own handicap in the last 7 days, so it's a fair fight.</span></div>`:''}
     ${rows.length?`<div class="card stack"><h2>Leaderboard</h2><span class="small muted">Average strokes gained per 18 vs a scratch golfer, last 10 rounds each.</span>
@@ -372,21 +449,37 @@ function vMates(){
 
 // ----- settings -----
 function seg(act,cur,opts){ return `<div class="seg">${opts.map(([k,l])=>`<button class="${cur===k?'on':''}" data-act="${act}" data-val="${k}">${l}</button>`).join('')}</div>`; }
-function vSettings(){
+function vMyGolf(){
+  const hc=S.hcp!=null?S.hcp:10, u=fullU();
   return `
-  <div class="top"><span class="brand">Settings</span></div>
+  <div class="top"><span class="brand">My golf</span></div>
   <div class="stack">
     <div class="card stack">
-      <h3>Account</h3>
-      ${uid?`<div><label class="small muted" for="myname">Your name (shown to your mates)</label><input id="myname" class="field" data-me="1" value="${esc(me.name)}"></div><div class="row between"><span class="small muted">${esc(me.email)}</span><button class="btn" data-act="signout">Sign out</button></div>`:CONFIGURED?`<div class="row between"><span class="small muted">Not signed in. Rounds stay on this phone.</span><button class="btn primary" data-act="signin">Sign in</button></div>`:`<span class="small muted">Accounts aren't set up yet, so rounds stay on this phone.</span>`}
-    </div>
-    <div class="card stack">
-      <h3>Your game</h3>
+      <h3>My game</h3>
       <div class="row" style="flex-wrap:nowrap">
         <div style="flex:1"><label class="small muted" for="myhcp">Handicap</label><input id="myhcp" class="field num" inputmode="decimal" data-hcp="hcp" value="${esc(fmtHcp(S.hcp))}" placeholder="e.g. 8.3 or +1.2"></div>
         <div style="flex:1"><label class="small muted" for="goalhcp">Goal handicap</label><input id="goalhcp" class="field num" inputmode="decimal" data-hcp="goal" value="${esc(fmtHcp(S.goal))}" placeholder="${esc(fmtHcp(goalHcp()))}"></div>
       </div>
       <span class="small muted">Every tenth counts. Each round remembers the handicap you had that day, so old rounds stay fair as you improve.</span>
+    </div>
+    <div class="card stack">
+      <h3>My bag</h3>
+      <span class="small muted">How far each club goes for you, carry plus roll, in ${isYd()?'yards':'metres'}. It fills in distances you skip, and later helps the caddie. Leave a club blank and the app uses your rounds or a typical number for your handicap.</span>
+      <div class="baggrid">${BAG.map(([k,l])=>{ const lr=learnedClub(k); return `<label for="bag_${k}">${l}</label><input id="bag_${k}" class="field num" type="number" inputmode="numeric" data-bag="${k}" value="${S.bag[k]?lenShow(S.bag[k]):''}" placeholder="${lenShow(lr||Math.round(typicalDrive(hc)*(CLUB_RATIO[k]||.7)))}"><span class="small muted">${lr?'from rounds':S.bag[k]?'':'typical'}</span>`; }).join('')}</div>
+    </div>
+    <div class="card stack">
+      <div class="setrow"><div><b>Fill in skipped details</b><div class="small muted">Skip something and the app makes a sensible guess, tagged on the hole so you can fix it. A wrong guess only shifts strokes gained between parts of your game on that hole, never your total.</div></div><button class="switch ${S.assumeOn?'on':''}" data-act="toggle" data-val="assumeOn" aria-label="Fill in skipped details" aria-pressed="${S.assumeOn}"></button></div>
+      <details class="assume"><summary>What gets assumed</summary><ul class="small">
+        <li><b>Tee shot finish:</b> fairway.</li>
+        <li><b>Distance left after the tee shot:</b> hole length minus that club's distance from My bag (driver if no club), so ${lenShow(clubDist('driver',hc).m)} ${u} with the driver.</li>
+        <li><b>Penalties:</b> none.</li>
+        <li><b>Chip or bunker shot, no distance:</b> ${lenShow(15)} ${u}; from the fringe inside ${lenShow(10)} ${u}, otherwise the rough. One shot.</li>
+        <li><b>Putts:</b> 2, unless the score only allows fewer.</li>
+        <li><b>First putt after an approach:</b> about 7% of the approach distance for your handicap (from ${lenShow(85)} ${u}, about ${toShow('fp',Math.round(85*0.07*(1+Math.max(0,hc)/40)*10)/10)} ${puttU()}).</li>
+        <li><b>First putt after a chip:</b> about 10% of the chip distance, at least ${toShow('fp',1)} ${puttU()}.</li>
+        <li><b>The score always wins.</b> If the shots don't add up, the hole is flagged for you to check.</li>
+        <li>After about 5 rounds, putt and chip guesses switch to your own averages.</li>
+      </ul></details>
     </div>
     <div class="card">
       <h3>Units</h3>
@@ -399,6 +492,10 @@ function vSettings(){
       <div class="setrow"><div>Smart entry<div class="small muted">Assumes 2 putts once you pick a score and scrolls you to the next question.</div></div><button class="switch ${S.smart?'on':''}" data-act="toggle" data-val="smart" aria-label="Smart entry" aria-pressed="${S.smart}"></button></div>
       <div class="setrow"><div>Track tee club<div class="small muted">Adds a club pick to each tee shot and a by-club table in Stats.</div></div><button class="switch ${S.clubs?'on':''}" data-act="toggle" data-val="clubs" aria-label="Track tee club" aria-pressed="${S.clubs}"></button></div>
     </div>
+    <div class="card stack">
+      <h3>Account</h3>
+      ${uid?`<div><label class="small muted" for="myname">Your name (shown to your mates)</label><input id="myname" class="field" data-me="1" value="${esc(me.name)}"></div><div class="row between"><span class="small muted">${esc(me.email)}</span><button class="btn" data-act="signout">Sign out</button></div>`:CONFIGURED?`<div class="row between"><span class="small muted">Not signed in. Rounds stay on this phone.</span><button class="btn primary" data-act="signin">Sign in</button></div>`:`<span class="small muted">Accounts aren't set up yet, so rounds stay on this phone.</span>`}
+    </div>
     <p class="small muted">Tour figures follow published PGA Tour benchmarks. Handicap baselines slide smoothly from any handicap; for now they are an early estimate and will be replaced with researched amateur data.</p>
   </div>`;
 }
@@ -407,11 +504,13 @@ function vSettings(){
 // ----- learn: lessons and the photo caddie -----
 const LESSONS=[{title:'Where should you miss?',sub:'Smart misses · Lesson 1 · 35 s',url:'https://claude.ai/artifact/YMVSvQpgDAYigq4TFHDe8W',body:'A par 4 with trees left and water right. See what each miss costs, and what it adds up to over a season.'}];
 let imgCaps=null;
-function vLearn(){
-  const c=S.cad, r=c.res;
+function vImprove(){
+  const c=S.cad, r=c.res, real=statRounds();
   return `
-  <div class="top"><span class="brand">Learn</span></div>
+  <div class="top"><span class="brand">Improve</span></div>
   <div class="stack">
+    ${vPath(real.length?real:[EXAMPLE_ROUND],!real.length)}
+    <span class="small muted">Goals and practice plans are coming here next.</span>
     ${sample?'':'<!--'}<div class="card stack">
       <h2>Where should I miss?</h2>
       <p class="muted" style="margin:0">Take a photo of the shot in front of you. Claude looks at the hazards and tells you where to aim and which side is the safe miss.</p>
@@ -482,6 +581,7 @@ function vSetup(){
       <input id="cname" class="field" data-setup="name" value="${esc(st.name)}" placeholder="e.g. Royal Adelaide, Blue course">
       <div class="row"><label class="small muted" for="rdate">Date</label><input id="rdate" type="date" class="field" style="max-width:170px" data-setup="date" value="${esc(st.date)}">
         <label class="small muted" for="rhcp">Handicap today</label><input id="rhcp" class="field num" style="max-width:90px" inputmode="decimal" data-setup="hcp" value="${esc(st.hcp)}" placeholder="8.3"></div>
+      <span class="small muted">Conditions (optional)</span><div class="chips wide">${CONDS.map(([k,l])=>`<button class="chip ${(st.cond||[]).includes(k)?'on':''}" data-act="scond" data-val="${k}">${l}</button>`).join('')}</div>
       <div class="seg"><button class="${st.holes.length===18?'on':''}" data-act="nholes" data-val="18">18 holes</button><button class="${st.holes.length===9?'on':''}" data-act="nholes" data-val="9">9 holes</button></div>
       <p class="small muted" style="margin:0">Pars and lengths are saved with the course, so you only enter them once. No lengths handy? Leave the typical ones and fix them later.</p>
       <div class="coursegrid">
@@ -525,7 +625,8 @@ function vHole(){
   <div class="stack">
     <div class="holehead"><span class="holenum num">${h.n}</span><div style="flex:1"><h2>Par ${par} · ${lenShow(h.len)} ${u}</h2><span class="muted small">Hole ${S.idx+1} of ${N}</span></div><button class="btn ghost small" data-act="edithole">${S.editHole?'Done':'Edit hole'}</button></div>
     ${S.editHole?`<div class="sec"><div class="holeedit"><span class="small muted">Par</span>${seg('hpar',String(par),[['3','3'],['4','4'],['5','5']])}<label class="small muted" for="hlen">Length</label><input id="hlen" class="field num" type="number" inputmode="numeric" data-hlen="1" value="${lenShow(h.len)}"><span class="muted">${u}</span></div><span class="small muted">Saved to the course for next time too.</span></div>`:''}
-    <div class="dots">${r.holes.map((x,i)=>`<button class="dot ${i===S.idx?'cur':''} ${(x.unsure||[]).length?'unsure':''} ${x.score!=null&&i!==S.idx?'done':''}" data-act="goto" data-i="${i}" aria-label="Go to hole ${x.n}">${x.n}</button>`).join('')}</div>
+    <div class="dots">${r.holes.map((x,i)=>`<button class="dot ${i===S.idx?'cur':''} ${(x.unsure||[]).length?'unsure':''} ${(x.assumed||[]).length?'assumed':''} ${x.score!=null&&i!==S.idx?'done':''}" data-act="goto" data-i="${i}" aria-label="Go to hole ${x.n}">${x.n}</button>`).join('')}</div>
+    ${(h.assumed||[]).length?`<div class="assumenote">The dashed parts were filled in for you. Tap the right answer if a guess is off.</div>`:''}
     ${(h.unsure||[]).length?`<div class="flagnote">Claude had to guess the highlighted parts of this hole. Tap the right answer to confirm.</div>`:''}
 
     <section id="sec-score" class="sec${uns(h,['score'])}"><div class="lab"><h3>Score</h3>${h.score!=null?`<span class="muted small">${names[String(h.score-par)]||''}</span>`:''}</div>
@@ -534,27 +635,27 @@ function vHole(){
     </section>
 
     ${par>=4?`
-    <section id="sec-tee" class="sec${uns(h,['teeLie','teeDist','teePen'])}"><div class="lab"><h3>${S.clubs?'Tee shot':'Tee shot finished in'}</h3></div>
+    <section id="sec-tee" class="sec${uns(h,['teeLie','teeDist','teePen'])}${asm(h,['teeLie','teeDist'])}"><div class="lab"><h3>${S.clubs?'Tee shot':'Tee shot finished in'}</h3></div>
       ${S.clubs?`<span class="small muted">Club</span><div class="chips wide">${CLUBS.map(([k,l])=>chip('teeClub',k,l,h.teeClub===k)).join('')}</div><span class="small muted">Finished in</span>`:''}
-      <div class="chips wide">${LIES_TEE.map(([k,l])=>chip('teeLie',k,l,h.teeLie===k)).join('')}</div>
+      <div class="chips wide">${LIES_TEE.map(([k,l])=>chip('teeLie',k,l,h.teeLie===k)).join('')}</div>${assumeHint(h,'teeLie')}
       <div class="seg">${[['none','No penalty'],['drop','Penalty drop'],['retee','OB, re-teed']].map(([k,l])=>`<button class="${(h.teePen||'none')===k?'on':''}" data-act="set" data-field="teePen" data-val="${k}">${l}</button>`).join('')}</div>
       ${h.teeLie&&h.teeLie!=='green'?`<div class="lab"><span class="small muted">${h.teePen==='drop'?'Distance to the hole from your drop':h.teePen==='retee'?'Distance left after your second tee shot':'Distance left to the hole'}</span><span class="small muted">${isYd()?'yards':'metres'}</span></div>
-      ${distField('teeDist',teeChoices(h.len),u,toShow('teeDist',h.teeDist),'Distance left after tee shot')}`:''}
+      ${distField('teeDist',teeChoices(h.len),u,toShow('teeDist',h.teeDist),'Distance left after tee shot')}${assumeHint(h,'teeDist')}`:h.teeLie?'':assumeHint(h,'teeDist')}
       ${h.teeLie==='green'?`<span class="small muted">Drove the green. Your first putt below covers it.</span>`:''}
     </section>`:''}
 
-    <section id="sec-atg" class="sec${uns(h,['atg','atgLie','atgDist','atgShots'])}"><div class="lab"><h3>Chip, pitch or bunker shot</h3><span class="small muted">within 30 ${u}, off the green</span></div>
+    <section id="sec-atg" class="sec${uns(h,['atg','atgLie','atgDist','atgShots'])}${asm(h,['atgLie','atgDist'])}"><div class="lab"><h3>Chip, pitch or bunker shot</h3><span class="small muted">within 30 ${u}, off the green</span></div>
       <div class="seg"><button class="${!h.atg?'on':''}" data-act="set" data-field="atg" data-val="0">None</button><button class="${h.atg?'on':''}" data-act="set" data-field="atg" data-val="1">Yes, I had one</button></div>
       ${h.atg?`<span class="small muted">Where was the first one from?</span>
-        <div class="chips wide">${LIES_ATG.map(([k,l])=>chip('atgLie',k,l,h.atgLie===k)).join('')}</div>
+        <div class="chips wide">${LIES_ATG.map(([k,l])=>chip('atgLie',k,l,h.atgLie===k)).join('')}</div>${assumeHint(h,'atgLie')}
         <div class="lab"><span class="small muted">Distance to the hole</span><span class="small muted">${isYd()?'yards':'metres'}</span></div>
-        ${distField('atgDist',ATG_CH,u,toShow('atgDist',h.atgDist),'Short game distance')}
+        ${distField('atgDist',ATG_CH,u,toShow('atgDist',h.atgDist),'Short game distance')}${assumeHint(h,'atgDist')}
         <div class="row between"><span class="small muted">How many short-game shots before you were on the green?</span>${stepper('atgShots',h.atgShots||1)}</div>`:''}
     </section>
 
-    <section id="sec-putt" class="sec${uns(h,['putts','fp'])}"><div class="lab"><h3>Putting</h3></div>
+    <section id="sec-putt" class="sec${uns(h,['putts','fp'])}${asm(h,['putts','fp'])}"><div class="lab"><h3>Putting</h3></div>
       <div class="chips">${[0,1,2,3,4].map(p=>chip('putts',p,p,Number(h.putts)===p&&h.putts!=null,p===0?'holed off green':p===1?'putt':'putts')).join('')}</div>
-      ${Number(h.putts)>0?`<div class="lab"><span class="small muted">First putt length (a pace is about ${isFt()?'3 feet':'a metre'})</span><span class="small muted">${isFt()?'feet':'metres'}</span></div>${distField('fp',isFt()?PUTT_FT:PUTT_M,puttU(),toShow('fp',h.fp),'First putt length')}`:''}
+      ${Number(h.putts)>0?`<div class="lab"><span class="small muted">First putt length (a pace is about ${isFt()?'3 feet':'a metre'})</span><span class="small muted">${isFt()?'feet':'metres'}</span></div>${distField('fp',isFt()?PUTT_FT:PUTT_M,puttU(),toShow('fp',h.fp),'First putt length')}${assumeHint(h,'fp')}`:''}${h.putts==null?assumeHint(h,'putts'):''}
     </section>
 
     <section id="sec-pen" class="sec${uns(h,['penOther'])}"><div class="row between"><div><h3>Other penalty strokes</h3><span class="small muted">Water, OB or unplayable after the tee shot</span></div>${stepper('penOther',h.penOther||0)}</div></section>
@@ -589,6 +690,33 @@ function vTalk(){
 }
 
 // ----- results -----
+function recapHtml(r,per){
+  const base=resolveBase(S.base,r), {t}=roundSG(r,base);
+  if(!t.holes) return '';
+  const c={b:0,p:0,bo:0,d:0}; r.holes.forEach((h,i)=>{ if(!per[i].ok) return; const d=Number(h.score)-Number(h.par); if(d<0)c.b++; else if(d===0)c.p++; else if(d===1)c.bo++; else c.d++; });
+  const pl=(n,w,ws)=>n?`${n} ${n===1?w:ws}`:'';
+  const line=[pl(c.b,'birdie or better','birdies or better'),pl(c.p,'par','pars'),pl(c.bo,'bogey','bogeys'),pl(c.d,'double or worse','doubles or worse')].filter(Boolean).join(' · ');
+  const order=CATS.map(([k,l])=>({k,l,v:t[k]})).filter(x=>x.k!=='ott'||r.holes.some(h=>Number(h.par)>=4)).sort((a,b)=>b.v-a.v);
+  const best=order[0], worst=order[order.length-1];
+  const leak=insights(r,base).find(i=>i.leak), mv=needleMovers([r]).list[0];
+  const vs=esc(baseShort(S.base,r));
+  return `<div class="card stack recap">
+    <h2>Round recap</h2>
+    <span class="small muted">${line}${condTags(r)}</span>
+    <div class="recaprow"><span class="small muted">Best part</span><div><b>${esc(best.l)}</b> <span class="num ${cls(best.v)}">${f1(best.v)}</span><div class="small muted">${best.v>0.05?`Better than ${vs} here.`:`Your least costly area against ${vs}.`}</div></div></div>
+    <div class="recaprow"><span class="small muted">Biggest leak</span><div><b>${esc(worst.l)}</b> <span class="num ${cls(worst.v)}">${f1(worst.v)}</span>${leak&&leak.body&&leak.body.replace(mv?mv.tip:'\u0000','').trim()?`<div class="small muted">${esc(leak.body.replace(mv?mv.tip:'\u0000','').trim())}</div>`:''}</div></div>
+    <div class="recaprow"><span class="small muted">Work on</span><div>${mv?`<b>${esc(mv.title)}</b><div class="small muted">${esc(mv.tip)}</div>`:`<b>Nothing stood out</b><div class="small muted">You matched your goal handicap across the board. Keep it going.</div>`}</div></div>
+    ${r.example?'':`<button class="btn" data-act="tab" data-val="improve">See your path to ${esc(fmtHcp(goalHcp()))}</button>`}
+  </div>`;
+}
+function checkHtml(r,per){
+  if(r.example) return '';
+  const bad=r.holes.map((h,i)=>({h,i,s:per[i]})).filter(x=>x.h.score!=null&&x.h.score!==''&&!x.s.ok);
+  const nAss=r.holes.reduce((a,h)=>a+(h.assumed||[]).length,0);
+  return `${bad.length?`<div class="card stack"><h3>Check ${bad.length===1?'this hole':'these holes'}</h3>${bad.map(x=>`<button class="roundrow" data-act="fixhole" data-i="${x.i}"><span><b>Hole ${x.h.n}</b><br><span class="small muted">${esc(x.s.err)}</span></span><span class="btn small">Fix</span></button>`).join('')}</div>`:''}
+  ${nAss?`<span class="small muted">${nAss} detail${nAss>1?'s were':' was'} filled in for you. Tap Edit holes to check them.</span>`:''}
+  <div class="row"><span class="small muted">Conditions</span>${CONDS.map(([k,l])=>`<button class="chip ${(r.cond||[]).includes(k)?'on':''}" style="flex:0 0 auto;padding:6px 12px" data-act="rcond" data-val="${k}">${l}</button>`).join('')}</div>`;
+}
 function vResults(){
   const r=S.viewing||S.round, {t,per}=rsg(r,S.base), tour=roundSG(r,'tour').t;
   const unsaved=!S.viewing&&!r.saved;
@@ -597,13 +725,14 @@ function vResults(){
   <div class="stack">
     <div><h1>${esc(r.course)}</h1><span class="muted">${fmtDate(r.date)} · shot ${t.score} (${t.score-t.par>=0?'+':''}${t.score-t.par}) over ${t.holes} holes ${r.example?'<span class="tag">Example</span>':''}</span></div>
     ${!t.complete?`<div class="flagnote">${r.holes.length-t.holes} hole${r.holes.length-t.holes>1?'s are':' is'} incomplete and left out of the totals.</div>`:''}
+    ${checkHtml(r,per)}
     <div class="card stack">
       <span class="small muted">Compared with ${esc(baseText(S.base,r))}</span>
       ${baseChips(r)}
       <div class="row between"><span class="bigsg ${cls(t.total)}">${f1(t.total)}</span><span class="small muted" style="text-align:right">strokes gained<br>${S.base==='tour'?'':`vs PGA Tour: <b class="num">${f1(tour.total)}</b>`}</span></div>
       ${bars(t)}
     </div>
-    ${insights(r,resolveBase(S.base,r)).map(i=>`<div class="insight ${i.leak?'leak':''}"><b>${esc(i.title)}</b>${i.body?`<div class="muted">${esc(i.body)}</div>`:''}</div>`).join('')}
+    ${recapHtml(r,per)}
     ${tilesHtml(famStats([r]),true)}
     <div class="card tbl"><table>
       <thead><tr><th>Hole</th><th>Par</th><th>Score</th><th>Tee</th><th>Appr</th><th>Short</th><th>Putt</th><th>Total</th></tr></thead>
@@ -661,11 +790,11 @@ function wrapText(g,text,x,y,maxW,lh){ const words=String(text).split(/\s+/); co
 function roundRect(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); g.fill(); }
 
 // ================= actions =================
-function newSetup(){ S.setup={name:'',date:today(),hcp:fmtHcp(S.hcp),courseId:null,holes:Array.from({length:18},(_,i)=>({par:PARS9[i%9],len:TYPICAL_LEN[PARS9[i%9]]}))}; }
+function newSetup(){ S.setup={name:'',cond:[],date:today(),hcp:fmtHcp(S.hcp),courseId:null,holes:Array.from({length:18},(_,i)=>({par:PARS9[i%9],len:TYPICAL_LEN[PARS9[i%9]]}))}; }
 function startRound(){
   const st=S.setup; const name=st.name.trim()||'Unnamed course';
   const h=parseHcp(st.hcp); if(h!=null&&h!==S.hcp){ S.hcp=h; lsSet('sg.hcp',h); }
-  S.round={id:'r'+Date.now(),date:st.date||today(),course:name,hcp:h!=null?h:S.hcp,saved:false,holes:st.holes.map((x,i)=>ex(i+1,x.par,Number(x.len)||TYPICAL_LEN[x.par]))};
+  S.round={id:'r'+Date.now(),date:st.date||today(),course:name,hcp:h!=null?h:S.hcp,cond:[...(st.cond||[])],saved:false,holes:st.holes.map((x,i)=>ex(i+1,x.par,Number(x.len)||TYPICAL_LEN[x.par]))};
   S.idx=0; S.editHole=false; saveDraft(); saveCourse(name,st.holes,st.courseId);
 }
 async function saveCourse(name,holes,id){
@@ -696,6 +825,7 @@ function setField(f,raw){
   const wasPutts=h.putts;
   h[f]=v;
   h.unsure=(h.unsure||[]).filter(x=>x!==f);
+  if(h.assumed){ h.assumed=h.assumed.filter(x=>x!==f); (ASSUME_DEPS[f]||[]).forEach(d=>{ if(h.assumed.includes(d)){ h[d]=null; h.assumed=h.assumed.filter(x=>x!==d); } }); if(!h.assumed.length) delete h.assumed; }
   if(f==='teeLie'||f==='teeDist'){ // tee shot finished inside 30 m off the green: that is where the short game starts
     if(h.teeLie&&h.teeLie!=='green'&&h.teeDist!=null&&h.teeDist<=30){ h.atg=true; h.atgLie=h.teeLie==='recovery'?'rough':h.teeLie; h.atgDist=h.teeDist; }
   }
@@ -713,14 +843,19 @@ document.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]'); if(!b) return;
   const a=b.dataset.act, val=b.dataset.val;
   if(a!=='askdel'&&a!=='del') S.confirmDel=false;
+  if(S.view==='hole'&&S.round&&['prev','next','goto','finish','home','talkfrom'].includes(a)){ commitAssumptions(hole()); saveDraft(); }
   switch(a){
-    case 'tab': S.view=val; S.viewing=null; S.saveMsg=''; window.scrollTo(0,0); break;
+    case 'tab': if(val==='stats'&&S.view==='stats') S.statsWho='me'; S.view=val; S.viewing=null; S.saveMsg=''; window.scrollTo(0,0); break;
     case 'home': S.view='home'; S.viewing=null; S.saveMsg=''; S.editHole=false; window.scrollTo(0,0); break;
     case 'base': S.base=val; lsSet('sg.base',val); break;
     case 'mode': S.mode=val; S.openExact={}; lsSet('sg.mode',val); break;
     case 'putunit': S.putUnit=val; lsSet('sg.putunit',val); break;
     case 'fullunit': S.fullUnit=val; lsSet('sg.fullunit',val); break;
-    case 'toggle': S[val]=!S[val]; lsSet('sg.'+val,S[val]); break;
+    case 'toggle': S[val]=!S[val]; lsSet('sg.'+val,S[val]); if(val==='assumeOn') saveProfile(); break;
+    case 'statswho': S.statsWho=val; if(val==='mates'&&uid&&!S.mates) loadMates(); break;
+    case 'scond': { const c=S.setup.cond||(S.setup.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); break; }
+    case 'rcond': { const r=S.viewing||S.round; const c=r.cond||(r.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
+    case 'fixhole': { if(S.viewing){ S.round=JSON.parse(JSON.stringify(S.viewing)); S.viewing=null; } S.idx=Number(b.dataset.i); S.openExact={}; S.editHole=false; saveDraft(); S.view='hole'; window.scrollTo(0,0); break; }
     case 'newround': newSetup(); S.view='setup'; window.scrollTo(0,0); break;
     case 'resume': S.view='hole'; break;
     case 'pickcourse': { const c=S.courses[Number(b.dataset.i)]; S.setup.courseId=c.id; S.setup.name=c.name; S.setup.holes=c.holes.map(h=>({par:h.par,len:h.len})); break; }
@@ -739,7 +874,7 @@ document.addEventListener('click',e=>{
     case 'goto': S.idx=Number(b.dataset.i); S.openExact={}; S.editHole=false; saveDraft(); window.scrollTo(0,0); break;
     case 'prev': if(S.idx>0){ S.idx--; S.openExact={}; S.editHole=false; window.scrollTo(0,0);} break;
     case 'next': S.idx++; S.openExact={}; S.editHole=false; window.scrollTo(0,0); syncDraftToDb(); break;
-    case 'finish': S.view='results'; S.viewing=null; window.scrollTo(0,0); break;
+    case 'finish': S.round.holes.forEach(h=>commitAssumptions(h)); saveDraft(); S.view='results'; S.viewing=null; window.scrollTo(0,0); break;
     case 'open': { const r=allRounds().find(x=>x.id===b.dataset.id); S.viewing=r; S.view='results'; window.scrollTo(0,0); break; }
     case 'edit': { const r=S.viewing||S.round; S.round=JSON.parse(JSON.stringify(r)); S.viewing=null; S.idx=0; saveDraft(); S.view='hole'; break; }
     case 'save': { const r=S.round; S.saveMsg='Saving…'; render(); persistRound(r).then(msg=>{ S.round=null; lsSet('sg.draft',null); S.viewing=S.rounds.find(x=>x.id===r.id); S.saveMsg=msg; if(sb&&uid) sb.from('drafts').delete().eq('user_id',uid).then(()=>{},()=>{}); render(); }); return; }
@@ -773,11 +908,12 @@ document.addEventListener('input',e=>{
   if(el.dataset.num){ setField(el.dataset.num,el.value); S.scrollTo=null; const st=document.getElementById('strip'); if(!st.hidden) st.innerHTML=vStrip(); return; }
   if(el.dataset.clen!=null){ S.setup.holes[Number(el.dataset.clen)].len=el.value===''?'':toStore('len',el.value); const t=document.getElementById('ctot'); if(t) t.textContent=setupTotals(); return; }
   if(el.dataset.hlen){ const v=toStore('len',el.value); if(v){ hole().len=v; saveDraft(); saveRoundCourse(); const st=document.getElementById('strip'); if(!st.hidden) st.innerHTML=vStrip(); } return; }
-  if(el.dataset.hcp){ const v=parseHcp(el.value); S[el.dataset.hcp]=v; lsSet('sg.'+el.dataset.hcp,v); if(el.dataset.hcp==='hcp') publishMe(); return; }
+  if(el.dataset.hcp){ const v=parseHcp(el.value); S[el.dataset.hcp]=v; lsSet('sg.'+el.dataset.hcp,v); if(el.dataset.hcp==='hcp') publishMe(); saveProfile(); return; }
+  if(el.dataset.bag){ const v=toStore('len',el.value); if(v>0) S.bag[el.dataset.bag]=v; else delete S.bag[el.dataset.bag]; lsSet('sg.bag',S.bag); saveProfile(); return; }
   if(el.dataset.setup){ S.setup[el.dataset.setup]=el.value; if(el.dataset.setup==='name') S.setup.courseId=null; return; }
 });
 // Redraw after leaving a box, unless focus moved to a button (that tap redraws anyway).
-document.addEventListener('focusout',e=>{ const d=e.target.dataset||{}; if(d.hcp!=null||d.hlen||d.num){ const to=e.relatedTarget; if(!(to&&to.closest&&to.closest('[data-act]'))) render(); } });
+document.addEventListener('focusout',e=>{ const d=e.target.dataset||{}; if(d.hcp!=null||d.hlen||d.num||d.bag){ const to=e.relatedTarget; if(!(to&&to.closest&&to.closest('[data-act]'))) render(); } });
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.dataset&&(e.target.dataset.num||e.target.dataset.hcp!=null)) e.target.blur(); });
 
 async function toggleSharing(){
@@ -864,9 +1000,12 @@ async function loadAll(){
     sb.from('rounds').select('data').eq('user_id',uid),
     sb.from('drafts').select('data,updated_at').eq('user_id',uid).maybeSingle(),
     sb.from('courses').select('id,name,holes'),
-    sb.from('profiles').select('display_name').eq('id',uid).maybeSingle()
+    sb.from('profiles').select('display_name,data').eq('id',uid).maybeSingle()
   ]);
   if(pr.data&&pr.data.display_name) me.name=pr.data.display_name;
+  const pd=pr.data&&pr.data.data;
+  if(pd&&pd.at&&pd.at>lsGet('sg.profileAt',0)){ if(pd.hcp!==undefined){ S.hcp=pd.hcp; lsSet('sg.hcp',S.hcp); } if(pd.goal!==undefined){ S.goal=pd.goal; lsSet('sg.goal',S.goal); } if(pd.bag){ S.bag=pd.bag; lsSet('sg.bag',S.bag); } if(pd.assumeOn!=null){ S.assumeOn=pd.assumeOn; lsSet('sg.assumeOn',S.assumeOn); } lsSet('sg.profileAt',pd.at); }
+  else if(!pd||!pd.at) saveProfile();
   if(!rs.error){
     const remote=(rs.data||[]).map(x=>x.data).filter(r=>r&&r.id&&Array.isArray(r.holes));
     const ids=new Set(remote.map(r=>r.id));
@@ -886,15 +1025,15 @@ async function loadAll(){
 }
 async function loadMates(){
   if(!sb||!uid) return;
-  S.matesState='loading'; if(S.view==='mates') render();
+  S.matesState='loading'; if(S.view==='stats'&&S.statsWho==='mates') render();
   const {data,error}=await sb.from('players').select('user_id,display_name,data');
-  if(error){ S.matesState='slow'; if(S.view==='mates') render(); return; }
+  if(error){ S.matesState='slow'; if(S.view==='stats'&&S.statsWho==='mates') render(); return; }
   S.mates=(data||[]).map(p=>({...(p.data||{}),_id:p.user_id}));
   (data||[]).forEach(p=>{ S.names[p.user_id]=p.display_name||''; });
   S.sharing=S.mates.some(p=>p._id===uid);
   S.matesState='ok';
   if(S.sharing&&!S.pubOnce){ S.pubOnce=true; publishMe(); }
-  if(S.view==='mates'||S.view==='home') render();
+  if(S.view==='stats'||S.view==='home') render();
 }
 S.auth={mode:'in',email:'',password:'',name:'',busy:false,err:'',msg:''};
 function vAuth(){
