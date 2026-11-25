@@ -179,3 +179,4 @@ details.assume b{color:var(--ink);font-weight:600}
 .plan{gap:14px}
 .plan li{padding-bottom:12px;border-bottom:1px solid var(--line)}
 .plan li:last-child{border-bottom:0;padding-bottom:0}
+.tag.extra{background:var(--surface);border-color:var(--line);color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500}
