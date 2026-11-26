@@ -590,3 +590,4 @@ button.courserow>i{color:var(--muted);font-style:normal;font-size:1.3rem}
 .fwbar>div{display:flex;align-items:center;justify-content:center;min-width:0}.fwbar .fw{background:#2E7D57;color:#fff}.fwbar .ms{background:#D9DFDB;color:#3a4a40}
 .baglist .bagrow{grid-template-columns:1fr 70px 72px}
 .lrlab{display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);margin-top:-2px}
+.linkcard{display:flex;align-items:center;gap:12px;justify-content:space-between}.linkcard>div{display:flex;flex-direction:column;gap:2px}.linkcard .btn{flex:0 0 auto}
