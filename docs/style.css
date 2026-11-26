@@ -530,7 +530,7 @@ b.pk{display:inline-grid;place-items:center;width:18px;height:18px;border-radius
 .pbands .chip{padding:12px 4px}
 
 /* Readability: stronger separation between areas */
-:root{--line:#D5DDD8;--c-ott:#2F6FB5;--c-app:#2E8B57;--c-atg:#B57A0C;--c-putt:#7A4BB5}
+:root{--line:#D5DDD8;--c-ott:#1F7A4D;--c-app:#2A7F8F;--c-atg:#B8860B;--c-putt:#A3542E}
 .card,.sec,.ch,.hometile,.leakcard,.homerounds,.lb,.dstat>div,.goal{box-shadow:0 1px 2px rgba(14,40,30,.06),0 8px 22px rgba(14,59,44,.08);border-color:transparent}
 .stack{gap:18px}
 h3{color:var(--accent);font-size:.86rem;font-weight:800;letter-spacing:.06em}
@@ -544,7 +544,7 @@ h3{color:var(--accent);font-size:.86rem;font-weight:800;letter-spacing:.06em}
 .subtabs{background:var(--bg);padding-top:10px}
 .subtabs button{background:#fff;border-color:transparent;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .quad div{border-top:4px solid transparent;background:rgba(255,255,255,.1)}
-.quad div:nth-child(1){border-top-color:#6EA8E6}.quad div:nth-child(2){border-top-color:#6FCF97}.quad div:nth-child(3){border-top-color:#F2C14E}.quad div:nth-child(4){border-top-color:#B79AE8}
+.quad div:nth-child(1){border-top-color:#7FD1A8}.quad div:nth-child(2){border-top-color:#7CC7D6}.quad div:nth-child(3){border-top-color:#F2C14E}.quad div:nth-child(4){border-top-color:#E9A07E}
 .hometile{border-top:5px solid var(--c-app)}
 .hometile:nth-child(2){border-top-color:#E0A82E}
 .hometile .eb{color:var(--accent)}
@@ -591,3 +591,23 @@ button.courserow>i{color:var(--muted);font-style:normal;font-size:1.3rem}
 .baglist .bagrow{grid-template-columns:1fr 70px 72px}
 .lrlab{display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);margin-top:-2px}
 .linkcard{display:flex;align-items:center;gap:12px;justify-content:space-between}.linkcard>div{display:flex;flex-direction:column;gap:2px}.linkcard .btn{flex:0 0 auto}
+
+/* Batch 2: calmer hierarchy and consistent area colours */
+.sechead.minor{background:none;padding:0 2px;margin-top:22px;border-radius:0}
+.sechead.minor h2{color:var(--accent);font-size:.86rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.sechead.minor p{color:var(--muted);font-size:.82rem}
+.sechead.minor .linkbtn,.sechead.minor button{color:var(--accent)}
+.leakcard.good{border-left-color:var(--c-ott)}
+.leakcard.good .ic{background:#E3F2E9}
+.liblist.flat{display:grid;gap:8px}
+.liblist.flat .libitem{background:#fff;border:0;border-radius:14px;box-shadow:0 1px 2px rgba(14,40,30,.06),0 6px 16px rgba(14,59,44,.07)}
+.spark{border-top:4px solid var(--line)}
+.spark.a-ott{border-top-color:var(--c-ott)}.spark.a-app{border-top-color:var(--c-app)}.spark.a-atg{border-top-color:var(--c-atg)}.spark.a-putt{border-top-color:var(--c-putt)}
+.barea.a-ott{color:var(--c-ott)}.barea.a-app{color:var(--c-app)}.barea.a-atg{color:var(--c-atg)}.barea.a-putt{color:var(--c-putt)}
+.libseg button.on.a-ott{background:var(--c-ott)}.libseg button.on.a-app{background:var(--c-app)}.libseg button.on.a-atg{background:var(--c-atg)}.libseg button.on.a-putt{background:var(--c-putt)}
+.roundtbl table{font-size:.85rem}.roundtbl small{font-size:.7rem}
+.dots{gap:6px}.dot{width:34px;height:34px;border-radius:9px;font-size:.85rem}
+.unlocks{display:grid;gap:8px}.unlocks>div{display:flex;gap:10px;align-items:center;background:rgba(255,255,255,.1);border-radius:12px;padding:10px 12px}
+.unlocks b{width:26px;height:26px;border-radius:50%;background:#F2C14E;color:#0E3B2C;display:grid;place-items:center;flex:0 0 auto;font-size:.85rem}
+.roundtbl th,.roundtbl td{padding-left:4px;padding-right:4px}.roundtbl{padding-left:10px;padding-right:10px}
+.hometile{border-top-color:var(--accent)}.hometile:nth-child(2){border-top-color:#E0A82E}
