@@ -139,10 +139,10 @@ const LEAK_WINDOW=10;
 const leakRounds=()=>chrono(statRounds()).slice(-LEAK_WINDOW);
 let _leakMemo=null;
 function leaksNow(){ const rs=leakRounds(), key=rs.map(r=>r.id).join()+'|'+goalHcp()+'|'+isFt()+isYd(); if(_leakMemo&&_leakMemo.key===key) return _leakMemo.v; const v=needleMovers(rs); _leakMemo={key,v}; return v; }
-function needleMovers(rounds){
+function needleMovers(rounds,mode){
   const acc={}; let holes=0, total=0;
   const add=(k,v)=>{ acc[k]=acc[k]||{v:0,n:0}; acc[k].v+=v; acc[k].n++; };
-  rounds.forEach(r=>{ const b=resolveBase('goal',r);
+  rounds.forEach(r=>{ const b=resolveBase(mode||'goal',r);
     r.holes.forEach(h=>{ const s=holeSG(h,b); if(!s.ok) return; holes++; total+=s.total; const par=Number(h.par);
       if(par>=4) add(h.teePen&&h.teePen!=='none'?'ott-pen':(h.teeLie==='sand'||h.teeLie==='recovery')?'ott-trouble':h.teeLie==='rough'?'ott-rough':'ott-fw', s.ott);
       if(s.nApp>0||Number(h.penOther)>0) add(isRecovery(h)?'app-recovery':appBucket(par===3?Number(h.len):(h.teeLie==='green'?0:Number(h.teeDist))), s.app);
@@ -152,8 +152,8 @@ function needleMovers(rounds){
   });
   const k=holes?18/holes:0;
   const list=Object.entries(acc).map(([key,o])=>{ const [title,tip]=moverInfo(key); return {k:key,title,tip,v:o.v*k,n:o.n*k}; }).filter(x=>x.v<-0.15).sort((a,b)=>a.v-b.v);
-  const all={}; Object.entries(acc).forEach(([key,o])=>all[key]=o.v*k);
-  return {gap:total*k,list,rounds:rounds.length,holes,all};
+  const all={}, raw={}; Object.entries(acc).forEach(([key,o])=>{ all[key]=o.v*k; raw[key]={v:o.v,n:o.n}; });
+  return {gap:total*k,list,rounds:rounds.length,holes,all,raw,k};
 }
 function famStats(rounds){
   let fwO=0,fw=0,gO=0,g=0,scO=0,sc=0,udO=0,ud=0,sdO=0,sd=0,rec=0,putts=0,three=0,pens=0,holes=0,score=0,par=0;
@@ -845,7 +845,7 @@ function heroHome2(){
     <span class="eyebrow">Playing to · last ${rs.length} round${rs.length>1?'s':''}</span>
     <b class="homebig num">${fmtHcp(Math.round(playing*10)/10)}</b>
     <span class="homesub">${line}</span>
-    <div class="quad">${parts.map(x=>`<div class="${x.v<=-0.3?'bad':x.v>=0.3?'good':''} ${x.k===worst.k&&x.v<-0.3?'worst':''}"><b class="num">${f1(x.v)}</b><span>${short[x.k]}</span></div>`).join('')}</div>
+    <div class="quad">${parts.map(x=>`<button data-act="bd" data-val="${x.k}" class="${x.v<=-0.3?'bad':x.v>=0.3?'good':''} ${x.k===worst.k&&x.v<-0.3?'worst':''}"><b class="num">${f1(x.v)}</b><span>${short[x.k]}</span></button>`).join('')}</div>
   </div>`;
 }
 function homeLeak(){
@@ -901,7 +901,7 @@ function vPath(rounds,isExample){
 }
 
 // ----- stats -----
-const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['disp','Dispersion'],['detail','Deep dive']]);
+const statsTabs=()=>subTabs('statstab',S.statsTab,[['overview','Overview'],['detail','Breakdown'],['disp','Dispersion']]);
 const whoSeg=()=>subTabs('mytab',S.myTab||'me',[['me','Me'],['badges','Badges'],['compete','Compete'],['mates','Friends']]);
 const GEAR='<button class="gearbtn" data-act="mytab" data-val="settings" aria-label="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>';
 function bounceHtml(rs){
@@ -1061,7 +1061,8 @@ function vStats(){
     const catName={ott:'tee shots',app:'approaches',atg:'chips and bunker shots',putt:'putting'};
     const cs=clubStats(rs,base), clubKeys=CLUBS.filter(([k])=>cs[k]);
     return `${top}<div class="stack">
-    ${secHead(`Path to ${esc(fmtHcp(goalHcp()))}`,'Where the shots between you and your goal are going','',true)}
+    ${ex?'':breakdownHtml()}
+    ${secHead(`Path to ${esc(fmtHcp(goalHcp()))}`,'Where the shots between you and your goal are going','',ex)}
     ${vPath(ex?rs:leakRounds(),ex)}
     ${ex?'':`${secHead('Bounce-back','How you recover after a big number')}${bounceHtml(rs)}`}
     ${ex?'':`<div class="card linkcard"><div><b>Looking for hole-by-hole or club stats?</b><span class="small muted">They've moved to My golf: tap a course under My courses, or see My bag for each club.</span></div><button class="btn" data-act="mytab" data-val="me">Open My golf</button></div>`}
@@ -1073,18 +1074,18 @@ function vStats(){
   const hc=rs.filter(r=>r.hcp!=null);
   return `${top}<div class="stack">
     ${heroStats()}
+    ${ex?'':bdTeaser()}
     ${secHead('Progress',`Strokes gained per 18 holes vs ${esc(S.base==='me'?`your current ${fmtHcp(myHcp(null))} handicap`:baseText(S.base,null))}`,'',true)}
     ${tough}
     <div class="card stack">
       ${baseChips(null)}
       ${rs.length>=2?lineChart(sg.map(t=>per18(t,'total')),labels,{rolling:true,aria:'Total strokes gained by round'}):`<div class="flagnote">Your progress chart appears once you've saved 2 rounds.</div>`}
       <span class="small muted">The green line is your 3-round average.</span>
-      ${rs.length>=2?`<div class="sparks">${CATS.map(([k,l])=>{ const vals=sg.map(t=>per18(t,k)); const last3=vals.slice(-3).reduce((a,b)=>a+b,0)/Math.min(3,vals.length); return `<div class="spark a-${k}"><div class="row"><span class="small">${l}</span><b class="num ${cls(last3)}">${f1(last3)}</b></div>${spark(vals)}<span class="small muted">last 3 avg</span></div>`; }).join('')}</div>`:''}
+      ${rs.length>=2?`<div class="sparks">${CATS.map(([k,l])=>{ const vals=sg.map(t=>per18(t,k)); const last3=vals.slice(-3).reduce((a,b)=>a+b,0)/Math.min(3,vals.length); return `<div class="spark a-${k}" data-act="bd" data-val="${k}" role="button" tabindex="0"><div class="row"><span class="small">${l}</span><b class="num ${cls(last3)}">${f1(last3)}</b></div>${spark(vals)}<span class="small muted">last 3 avg</span></div>`; }).join('')}</div>`:''}
     </div>
     ${hc.length>=2?`${secHead('Handicap','Lower is better, so the line climbs as you improve')}<div class="card">${lineChart(hc.map(r=>r.hcp),hc.map(r=>shortDate(r.date)),{plain:true,invert:true,h:120,fmt:v=>fmtHcp(v),aria:'Handicap by round'})}</div>`:''}
     ${secHead('The usual stats',real.length?`Across ${rs.length} round${rs.length>1?'s':''}`:'From the example round')}
     ${tilesHtml(famStats(rs),false)}
-    <button class="btn big" data-act="statstab" data-val="detail">Deep dive: path to goal and bounce-back →</button>
   </div>`;
 }
 const ordinal=n=>n+(n%100>=11&&n%100<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th'));
@@ -1723,7 +1724,7 @@ function learnApp(){
   const steps=[
     ['Enter a round in a couple of minutes','Tap the score, then only what was different from a normal hole. The app works out the rest, like 1 putt when the score leaves no room for two. Picked up? Tap "Picked up?" and say where you were.','home'],
     ['Check it before you save','After the last hole, "Check round" lists anything that doesn\'t add up or is missing. Tap the answer on each card. One tap each, no going back into holes.','home'],
-    ['Read the headline first','The card at the top of each tab tells you in plain words how you went and where the shots went. Deep dive has the detail.','stats'],
+    ['Read the headline first','The card at the top of each tab tells you in plain words how you went and where the shots went. Breakdown shows where every shot is won and lost.','stats'],
     ['Find your biggest leak','Improve shows what each part of your game costs you and what fixing it is worth.','improve'],
     ['Run a 4-week plan','Pick a leak, your days and facilities. Log drill scores, take the test in week 1 and again in week 4, and watch the number move.','improve'],
     ['Earn badges for your handicap','Targets are set for your handicap band, so they mean something at your level. Find them in My golf → Badges.','mygolf:badges'],
@@ -2406,6 +2407,7 @@ document.addEventListener('click',e=>{
     case 'oneoff': S.oneOff=true; break;
     case 'coursenotes': S.myCourse=val; window.scrollTo(0,0); break;
     case 'playercard': S.shareKind='player'; S.view='share'; S.shareImg=null; S.shareMsg=''; render(); drawPlayerCard().then(u=>{ S.shareImg=u; if(S.view==='share') render(); }).catch(()=>{ S.shareMsg="Couldn't draw the card."; render(); }); window.scrollTo(0,0); return;
+    case 'bd': S.view='stats'; S.statsTab='detail'; S.bdFocus=val; render(); setTimeout(()=>{ const el=document.getElementById('bd-'+val); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); },60); return;
     case 'mytab': S.view='mygolf'; S.myTab=val; S.myCourse=null; if(val==='mates'&&uid&&!S.mates) loadMates(); window.scrollTo(0,0); break;
     case 'scond': { const c=S.setup.cond||(S.setup.cond=[]); const i=c.indexOf(val); if(i>=0) c.splice(i,1); else c.push(val); break; }
     case 'rexclude': case 'rwhy': { const r=S.viewing||S.round; if(a==='rexclude'){ r.excluded=!r.excluded; if(!r.excluded) delete r.excludeWhy; } else r.excludeWhy=r.excludeWhy===val?undefined:val; if(S.viewing){ persistRound(r).then(()=>{ S.viewing=S.rounds.find(x=>x.id===r.id)||r; render(); }); } else saveDraft(); break; }
@@ -2842,4 +2844,50 @@ function impPreview(){
     <h2 class="herohead">${left} more round${left>1?'s':''} and this page <span class="hl">builds itself</span>.</h2>
     <div class="unlocks"><div><b>1</b><span>Your biggest leak, in shots a round</span></div><div><b>2</b><span>Goals picked from your rounds</span></div><div><b>3</b><span>A 4-week plan with drills and tests</span></div></div>
     <button class="btn" data-act="imptab" data-val="drills" style="background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.3)">Browse drills now</button></div>`;
+}
+
+// ---- Deep dive: every area split into the shots that make it up ----
+const BD_ORDER={ott:['ott-fw','ott-rough','ott-trouble','ott-pen'],app:['app-100','app-150','app-200','app-200p','app-recovery'],atg:['atg-sand','atg-rough','atg-fw'],putt:['putt-3','putt-5','putt-10','putt-15','putt-20','putt-25','putt-long']};
+const BD_MIN=8; // fewer shots than this and the number is too noisy to trust
+function bdLabel(k){
+  const fixed={'ott-fw':'In the fairway','ott-rough':'Into the rough','ott-trouble':'Bunkers and trees','ott-pen':'Penalties','app-recovery':'Recovery shots','atg-sand':'Bunker shots','atg-rough':'Chips from the rough','atg-fw':'Chips from the fringe and fairway'};
+  if(fixed[k]) return fixed[k];
+  return moverInfo(k)[0].replace(/^Long approaches over /,'Over ').replace(/^Approaches inside /,'Inside ').replace(/^Approaches from /,'').replace(/^Lag putts over /,'Over ').replace(/^Putts inside /,'Inside ').replace(/^Putts from /,'');
+}
+function breakdownHtml(){
+  const rs=leakRounds(); if(!rs.length) return '';
+  const mode=heroMode(), nm=needleMovers(rs,mode), raw=nm.raw||{}, k=nm.k||0;
+  const areaTot=snap(rs,mode);
+  const cards=CATS.map(([a,l])=>{
+    const rows=BD_ORDER[a].filter(x=>raw[x]).map(x=>({x,v:raw[x].v*k,n:raw[x].n,per:raw[x].v/raw[x].n}));
+    if(!rows.length) return '';
+    const max=Math.max(0.5,...rows.filter(r=>r.n>=BD_MIN).map(r=>Math.abs(r.v)));
+    const tot=rows.reduce((t,r)=>t+r.v,0); // the rows always add up to the area total
+    return `<div class="card bdcard ${S.bdFocus===a?'focus':''}" id="bd-${a}">
+      <div class="row between" style="flex-wrap:nowrap"><h3>${esc(l)}</h3><b class="num bdtot ${cls(tot)}">${f1(tot)}<small> a round</small></b></div>
+      ${rows.map(r=>{ const thin=r.n<BD_MIN, w=thin?0:Math.round(Math.min(1,Math.abs(r.v)/max)*50);
+        return `<div class="bdrow ${thin?'thin':''}"><div class="bdlab"><span>${esc(bdLabel(r.x))}</span><small>${r.n} shot${r.n===1?'':'s'}${thin?' · not enough yet':` · ${r.per>=0?'+':'−'}${Math.abs(r.per).toFixed(2)} a shot`}</small></div>
+          <div class="bdbar"><i class="${r.v<0?'neg':'pos'}" style="${r.v<0?`right:50%;width:${w}%`:`left:50%;width:${w}%`}"></i></div>
+          <b class="num ${thin?'muted':cls(r.v)}">${f1(r.v)}</b></div>`; }).join('')}
+    </div>`; }).join('');
+  return `${secHead('Where your shots are won and lost',`Last ${rs.length} round${rs.length>1?'s':''}, shots gained or lost a round`,'',true)}
+    <div class="bdtog">${seg('base',mode,[['me',`vs my handicap ${esc(fmtHcp(S.hcp!=null?S.hcp:10))}`],['goal',`vs my goal ${esc(fmtHcp(goalHcp()))}`]])}</div>
+    ${cards}
+    <p class="small muted" style="margin:0 2px">Each area's total is split into the shots that make it up. Greyed rows have fewer than ${BD_MIN} shots, so treat them as a rough guide for now.</p>`;
+}
+
+// Stats overview: the two shot types gaining and losing the most, one tap from the full breakdown
+function bdTeaser(){
+  const rs=leakRounds(); if(rs.length<1) return '';
+  const nm=needleMovers(rs,heroMode()), raw=nm.raw||{}, k=nm.k||0;
+  const rows=Object.entries(raw).filter(([,o])=>o.n>=BD_MIN).map(([x,o])=>({x,v:o.v*k,a:x.split('-')[0]}));
+  const AREA={ott:'Driving',app:'Approach',atg:'Short game',putt:'Putting'};
+  const win=rows.filter(r=>r.v>0.05).sort((a,b)=>b.v-a.v).slice(0,2), lose=rows.filter(r=>r.v<-0.05).sort((a,b)=>a.v-b.v).slice(0,2);
+  if(!win.length&&!lose.length) return '';
+  const li=r=>`<div class="tsrow"><span><b>${esc(bdLabel(r.x))}</b><small>${AREA[r.a]}</small></span><b class="num ${cls(r.v)}">${f1(r.v)}</b></div>`;
+  return `<button class="card bdteaser" data-act="statstab" data-val="detail">
+    <div class="row between" style="flex-wrap:nowrap"><h3>Where your shots are won and lost</h3><i aria-hidden="true">›</i></div>
+    <div class="tscols"><div><span class="tshead pos">Winning you shots</span>${win.map(li).join('')||'<span class="small muted">Nothing clear yet</span>'}</div>
+    <div><span class="tshead neg">Costing you shots</span>${lose.map(li).join('')||'<span class="small muted">Nothing clear yet</span>'}</div></div>
+    <span class="small link">See the full breakdown</span></button>`;
 }
