@@ -535,7 +535,7 @@ const DRILL_LIB=[
 ];
 // Drills were written for three putting ranges; spread them over the finer buckets.
 const PUTT_SPREAD={'putt-short':{'putt-3':1,'putt-5':1,'putt-10':.6},'putt-mid':{'putt-10':1,'putt-15':1,'putt-20':1,'putt-25':.5},'putt-long':{'putt-20':.5,'putt-25':1,'putt-long':1}};
-DRILL_LIB.forEach(d=>{ Object.entries(d.areas).forEach(([k,v])=>{ const sp=PUTT_SPREAD[k]; if(sp) Object.entries(sp).forEach(([nk,w])=>{ d.areas[nk]=Math.max(d.areas[nk]||0,v*w); }); }); Object.keys(PUTT_SPREAD).forEach(k=>delete d.areas[k]); });
+DRILL_LIB.forEach(d=>{ Object.entries(d.areas).forEach(([k,v])=>{ const sp=PUTT_SPREAD[k]; if(sp) Object.entries(sp).forEach(([nk,w])=>{ d.areas[nk]=Math.max(d.areas[nk]||0,v*w); }); }); Object.keys(PUTT_SPREAD).forEach(k=>{ if(!Object.values(PUTT_SPREAD).some(sp=>k in sp)) delete d.areas[k]; }); }); // keep 'putt-long': it's an old range and a new bucket
 
 DRILL_LIB.forEach(d=>{ if(DRILL_ART[d.id]) d.art=DRILL_ART[d.id]; if(!d.steps&&DRILL_STEPS[d.id]){ const st=DRILL_STEPS[d.id]; d.steps=()=>st; } });
 const WARMUPS={range:'Wedges up to driver, a few balls each, easy tempo.',green:'Short putts first, then a few long ones to feel the speed.',short:'A few easy chips and pitches to wake the hands up.',home:'Some easy swings and short putts on the carpet.'};
