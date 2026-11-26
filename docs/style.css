@@ -611,3 +611,11 @@ button.courserow>i{color:var(--muted);font-style:normal;font-size:1.3rem}
 .unlocks b{width:26px;height:26px;border-radius:50%;background:#F2C14E;color:#0E3B2C;display:grid;place-items:center;flex:0 0 auto;font-size:.85rem}
 .roundtbl th,.roundtbl td{padding-left:4px;padding-right:4px}.roundtbl{padding-left:10px;padding-right:10px}
 .hometile{border-top-color:var(--accent)}.hometile:nth-child(2){border-top-color:#E0A82E}
+
+/* One colour for the four areas: brand green everywhere (no per-area colours) */
+.quad div:nth-child(n){border-top-color:transparent}
+
+.bars .bar:nth-child(n) span:first-child{color:var(--ink)}
+.spark.a-ott,.spark.a-app,.spark.a-atg,.spark.a-putt{border-top-color:transparent}.spark{border-top:0}
+.barea.a-ott,.barea.a-app,.barea.a-atg,.barea.a-putt{color:var(--accent)}
+.libseg button.on.a-ott,.libseg button.on.a-app,.libseg button.on.a-atg,.libseg button.on.a-putt{background:var(--accent)}
