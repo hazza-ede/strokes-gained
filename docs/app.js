@@ -723,7 +723,7 @@ const ICONS={
 function render(){
   [S.round,...(S.rounds||[])].forEach(r=>{ if(r&&!r._si){ fillSI(r.holes,r.course); r._si=1; } });
   const app=document.getElementById('app'), strip=document.getElementById('strip'), tabs=document.getElementById('tabs');
-  const tabViews=['home','stats','improve','learn','mygolf'], TABL={home:'Rounds',stats:'Stats',improve:'Improve',learn:'Learn',mygolf:'My golf'};
+  const tabViews=['home','stats','improve','learn','mygolf'], TABL={home:'Home',stats:'Stats',improve:'Improve',learn:'Learn',mygolf:'My golf'};
   if(S.view==='settings') S.view='mygolf'; if(S.view==='mates'){ S.view='mygolf'; S.myTab='mates'; } if(S.statsTab==='mates'){ S.statsTab='overview'; S.view==='stats'&&(S.view='mygolf',S.myTab='mates'); }
   strip.hidden=S.view!=='hole'; tabs.hidden=!tabViews.includes(S.view);
   document.body.classList.toggle('holeview',S.view==='hole');
@@ -750,7 +750,7 @@ function bars(v){
     return `<div class="bar"><span class="small">${l}</span><div class="track"><div class="fill" style="${pos?'left:50%':'right:50%'};width:${w}%;background:var(--${pos?'pos':'neg'})"></div></div><span class="val ${cls(v[k])}">${f1(v[k])}</span></div>`; }).join('')}</div>`;
 }
 // Section heading: a heavy rule and big title so each part of a tab stands on its own.
-const secHead=(title,sub,right,first)=>`<div class="sechead${first?' first':''}"><div><h2>${title}</h2>${sub?`<p>${sub}</p>`:''}</div>${right||''}</div>`;
+const secHead=(title,sub,right,first,minor)=>`<div class="sechead${first?' first':''}${minor?' minor':''}"><div><h2>${title}</h2>${sub?`<p>${sub}</p>`:''}</div>${right||''}</div>`;
 const subTabs=(act,cur,opts)=>`<div class="subtabs" role="tablist">${opts.map(([k,l])=>`<button role="tab" aria-selected="${cur===k}" class="${cur===k?'on':''}" data-act="${act}" data-val="${k}">${l}</button>`).join('')}</div>`;
 const sampleTag=on=>on?'<span class="tag">Sample data</span>':'';
 
@@ -852,7 +852,7 @@ function homeLeak(){
   const rs=chrono(statRounds()).slice(-10); if(!rs.length) return '';
   const o=snap(rs,heroMode()), parts=CATS.map(([k])=>({k,v:o[k]})), worst=[...parts].sort((a,b)=>a.v-b.v)[0], best=[...parts].sort((a,b)=>b.v-a.v)[0], fix=Math.abs(Math.min(0,worst.v));
   if(fix>=0.3) return `<button class="leakcard" data-act="imptab" data-val="overview"><span class="ic" aria-hidden="true">⛳</span><span><b>${Cap(SAY[worst.k])} is your biggest leak</b><span class="small muted">Fix it and you'd average ${Math.round(o.score-fix)}, not ${Math.round(o.score)}</span></span><i aria-hidden="true">›</i></button>`;
-  return best.v>=0.3?`<button class="leakcard" data-act="tab" data-val="stats"><span class="ic" aria-hidden="true">💪</span><span><b>${Cap(SAY[best.k])} is your strength</b><span class="small muted">You gain ${best.v.toFixed(1)} a round there</span></span><i aria-hidden="true">›</i></button>`:'';
+  return best.v>=0.3?`<button class="leakcard good" data-act="tab" data-val="stats"><span class="ic" aria-hidden="true">💪</span><span><b>${Cap(SAY[best.k])} is your strength</b><span class="small muted">You gain ${best.v.toFixed(1)} a round there</span></span><i aria-hidden="true">›</i></button>`:'';
 }
 function homeTiles(){
   const B=S.block, cur=B&&B.sessions.find(x=>!x.done);
@@ -889,7 +889,7 @@ function vPath(rounds,isExample){
     : top.length ? `Overall you're already at ${esc(g)} level, but these parts of your game still cost you shots against a ${esc(g)} golfer. Fix them, or set a lower goal in My golf.`
     : `You're already playing to ${esc(g)} or better. Set a lower goal in My golf to find your next shots.`;
   return `<div class="card stack">
-    <div class="row between"><h2>Path to ${esc(g)}</h2>${sampleTag(isExample)}</div>
+    ${isExample?`<div class="row between">${sampleTag(isExample)}</div>`:''}
     <p style="margin:0">${head}</p>
     ${top.length?`<ol class="movers">${top.map(x=>`<li>
       <div class="row between" style="flex-wrap:nowrap"><b>${esc(x.title)}</b><span class="val num neg">${f1(x.v)}</span></div>
@@ -921,7 +921,7 @@ function statBadge(x,mode){
   const lv=x.levels.map(l=>`<i class="${l.when?'on':''} ${l.locked?'lk':''}"></i>`).join('');
   const prog=mode!=='own'||x.now.when||x.best==null?'':`<div class="bprog"><div style="width:${Math.max(8,Math.min(100,x.lower?(x.now.target+1)/(x.best+1)*100:x.best/x.now.target*100))}%"></div></div><span class="small muted">Your best: ${x.best} · ${x.gap} to go</span>`;
   const tail=mode==='ahead'?`<span class="small muted">🔒 Locked</span>`:x.now.when?`<span class="small pos">${earnedTxt(x.now.when)}</span>`:mode==='past'?`<span class="small muted">Not earned</span>`:'';
-  return `<button class="badge stat ${x.now.when?'on':''} ${mode==='ahead'?'locked':''}" data-act="badge" data-val="${x.id}">${x.now.when?'<i class="bk">✓</i>':''}<span class="barea">${esc(x.area)}</span><b>${esc(x.t)}</b><span class="small muted">${esc(x.desc)}</span>${prog}${mode==='own'?`<span class="lvdots" aria-label="bands cleared">${lv}</span>`:''}${tail}</button>`;
+  return `<button class="badge stat ${x.now.when?'on':''} ${mode==='ahead'?'locked':''}" data-act="badge" data-val="${x.id}">${x.now.when?'<i class="bk">✓</i>':''}<span class="barea a-${({Driving:'ott',Approach:'app','Short game':'atg',Putting:'putt'})[x.area]||'x'}">${esc(x.area)}</span><b>${esc(x.t)}</b><span class="small muted">${esc(x.desc)}</span>${prog}${mode==='own'?`<span class="lvdots" aria-label="bands cleared">${lv}</span>`:''}${tail}</button>`;
 }
 function badgeModalHtml(x,cur){
   return `<div class="modalback" data-act="closebadge"></div><div class="modal" role="dialog" aria-modal="true">
@@ -960,19 +960,19 @@ function celebrateHtml(c){
 function badgesHtml(){
   const A=achievements(), fs=funStats(), band=A.cur.name;
   return `${levelCard(A)}
-    ${secHead('Strokes gained','Measured against your own handicap')}
+    ${secHead('Strokes gained','Measured against your own handicap','',false,true)}
     <div class="badges">${A.sg.map(x=>x.id==='up'?badgeCard(x.t,x.d,x.when,'',`<span class="achips">${x.areas.map(a=>`<em class="${a.when?'on':''}">${a.when?'✓ ':''}${esc(a.l)}</em>`).join('')}</span>`):badgeCard(x.t,x.d,x.when,x.note)).join('')}</div>
     <div class="tiles pbs">${A.pb.map(p=>`<div class="tile"><span>Best ${esc(p.l.toLowerCase())}</span><b class="${p.v>0?'pos':p.v<0?'neg':''}">${p.v==null?'–':gl(p.v)}</b><span>${p.r?esc(shortDate(p.r.date)):''}</span></div>`).join('')}</div>
-    ${secHead(`Targets for ${band} handicaps`,'Tap a badge to see your best and the easier targets you\'ve cleared')}
+    ${secHead(`Targets for ${band} handicaps`,'Tap a badge to see your best and the easier targets you\'ve cleared','',false,true)}
     <div class="badges">${A.stats.map(x=>statBadge(x,'own')).join('')}</div>
-    ${secHead(`Milestones for ${band} handicaps`,'')}
+    ${secHead(`Milestones for ${band} handicaps`,'','',false,true)}
     <div class="badges">${A.ms.map(x=>badgeCard(x.t,x.d,x.when)).join('')}</div>
-    ${A.catchUp.length?`${secHead('Still to tick off','From easier bands. Very doable at your handicap.')}
+    ${A.catchUp.length?`${secHead('Still to tick off','From easier bands. Very doable at your handicap.','',false,true)}
     <div class="badges">${A.catchUp.map(x=>badgeCard(x.t,x.d,null,'',`<span class="bfrom">${esc(x.band)} band</span>`)).join('')}</div>`:''}
     ${A.along.length?`<details class="along"><summary>Earned along the way <b>${A.along.length}</b></summary><div class="badges">${A.along.map(x=>badgeCard(x.t,x.d,x.when,'',`<span class="bfrom">${esc(x.band)} band</span>`)).join('')}</div></details>`:''}
-    ${secHead('Any handicap','')}
+    ${secHead('Any handicap','','',false,true)}
     <div class="badges">${A.every.map(x=>badgeCard(x.t,x.d,x.when,x.when?'':x.prog)).join('')}</div>
-    ${fs.length?`${secHead('Fun stats','The numbers worth bragging (or groaning) about')}<div class="tiles">${fs.map(([l,v,sub])=>`<div class="tile"><span>${l}</span><b>${v}</b><span>${sub}</span></div>`).join('')}</div>`:''}`;
+    ${fs.length?`${secHead('Fun stats','The numbers worth bragging (or groaning) about','',false,true)}<div class="tiles">${fs.map(([l,v,sub])=>`<div class="tile"><span>${l}</span><b>${v}</b><span>${sub}</span></div>`).join('')}</div>`:''}`;
 }
 const condTags=r=>(r.cond||[]).map(c=>` <span class="tag soft">${esc((CONDS.find(x=>x[0]===c)||[,c])[1])}</span>`).join('');
 // ================= dispersion: where tee shots and approaches finish =================
@@ -1005,7 +1005,7 @@ function teeDisp(rs){
     ${n>=4?`<ellipse cx="${X(mx)}" cy="${Y(my)}" rx="${2*Math.sqrt(l1)}" ry="${2*Math.sqrt(l2)}" transform="rotate(${-ang} ${X(mx)} ${Y(my)})" stroke="#fff" stroke-width="2" fill="rgba(255,255,255,.08)"/>`:''}
     ${xy.map(([x,y])=>`<circle cx="${X(x)}" cy="${Y(y)}" r="5.5" fill="#fff"/>`).join('')}
     <text x="10" y="${H-8}" fill="#fff" font-size="11" font-family="Inter,system-ui" opacity=".85">← LEFT</text><text x="${x0}" y="${H-8}" text-anchor="middle" fill="#fff" font-size="10" font-family="Inter,system-ui" opacity=".75">${u} past the fairway edge (approx.)</text><text x="${W-10}" y="${H-8}" text-anchor="end" fill="#fff" font-size="11" font-family="Inter,system-ui" opacity=".85">RIGHT →</text><text x="${x0}" y="16" text-anchor="middle" fill="#fff" font-size="11" font-family="Inter,system-ui" opacity=".85">FAIRWAY</text></svg></div>
-    <div class="dstat"><div><b class="num">${Math.round(my)} ${u}</b><span>Average drive</span></div><div><b class="num">${Math.round(fwN/n*100)}%</b><span>Fairways hit</span></div><div><b class="${miss&&big/miss>=.65?'neg':''}">${miss?`${big} of ${miss} ${side}`:'None'}</b><span>Misses</span></div></div>
+    <div class="dstat"><div><b class="num">${Math.round(my)} ${u}</b><span>Average drive</span></div><div><b class="num">${Math.round(fwN/n*100)}%</b><span>Fairways hit</span></div><div><b class="${miss&&big/miss>=.65?'neg':''}">${miss?`${Math.round(big/miss*100)}% ${side}`:'None'}</b><span>${miss?`Misses (${big} of ${miss})`:'Misses'}</span></div></div>
     <div class="card stack" style="gap:6px"><b>What it means</b><span class="small muted">${say}</span><span class="small muted">${n} tee shot${n===1?'':'s'}. Distances past the fairway edge come from where you tapped, so they're approximate.</span></div>`;
 }
 function appDisp(rs){
@@ -1079,7 +1079,7 @@ function vStats(){
       ${baseChips(null)}
       ${rs.length>=2?lineChart(sg.map(t=>per18(t,'total')),labels,{rolling:true,aria:'Total strokes gained by round'}):`<div class="flagnote">Your progress chart appears once you've saved 2 rounds.</div>`}
       <span class="small muted">The green line is your 3-round average.</span>
-      ${rs.length>=2?`<div class="sparks">${CATS.map(([k,l])=>{ const vals=sg.map(t=>per18(t,k)); const last3=vals.slice(-3).reduce((a,b)=>a+b,0)/Math.min(3,vals.length); return `<div class="spark"><div class="row"><span class="small">${l}</span><b class="num ${cls(last3)}">${f1(last3)}</b></div>${spark(vals)}<span class="small muted">last 3 avg</span></div>`; }).join('')}</div>`:''}
+      ${rs.length>=2?`<div class="sparks">${CATS.map(([k,l])=>{ const vals=sg.map(t=>per18(t,k)); const last3=vals.slice(-3).reduce((a,b)=>a+b,0)/Math.min(3,vals.length); return `<div class="spark a-${k}"><div class="row"><span class="small">${l}</span><b class="num ${cls(last3)}">${f1(last3)}</b></div>${spark(vals)}<span class="small muted">last 3 avg</span></div>`; }).join('')}</div>`:''}
     </div>
     ${hc.length>=2?`${secHead('Handicap','Lower is better, so the line climbs as you improve')}<div class="card">${lineChart(hc.map(r=>r.hcp),hc.map(r=>shortDate(r.date)),{plain:true,invert:true,h:120,fmt:v=>fmtHcp(v),aria:'Handicap by round'})}</div>`:''}
     ${secHead('The usual stats',real.length?`Across ${rs.length} round${rs.length>1?'s':''}`:'From the example round')}
@@ -1242,10 +1242,10 @@ function tee12Art(){
 function libraryHtml(){
   const groups=[['putt','Putting'],['atg','Short game'],['app','Approach'],['ott','Tee shots']], c=S.libCat||'putt';
   const ds=DRILL_LIB.filter(d=>Object.keys(d.areas).some(k=>CAT_OF(k)===c&&d.areas[k]>=0.5));
-  return `${secHead('Drill library','Tap any drill to see how it works')}
-  <div class="seg libseg" role="tablist" aria-label="Drill type">${groups.map(([k,l])=>`<button role="tab" aria-selected="${c===k}" class="${c===k?'on':''}" data-act="libcat" data-val="${k}">${l}</button>`).join('')}</div>
-  <div class="card"><div class="liblist">${ds.map(d=>`<button class="libitem" data-act="drill" data-val="${d.id}"><span><b>${esc(d.t)}</b><br><span class="small muted">${esc(d.type)} · ${d.min}–${d.max} min</span></span><span class="muted">›</span></button>`).join('')}</div>
-  <span class="small muted">${ds.length} ${groups.find(g=>g[0]===c)[1].toLowerCase()} drill${ds.length===1?'':'s'}</span></div>`;
+  return `${secHead('Drill library','Tap any drill to see how it works','',false,true)}
+  <div class="seg libseg" role="tablist" aria-label="Drill type">${groups.map(([k,l])=>`<button role="tab" aria-selected="${c===k}" class="a-${k} ${c===k?'on':''}" data-act="libcat" data-val="${k}">${l}</button>`).join('')}</div>
+  <div class="liblist flat">${ds.map(d=>`<button class="libitem" data-act="drill" data-val="${d.id}"><span><b>${esc(d.t)}</b><br><span class="small muted">${esc(d.type)} · ${d.min}–${d.max} min</span></span><span class="muted">›</span></button>`).join('')}</div>
+  <span class="small muted">${ds.length} ${groups.find(g=>g[0]===c)[1].toLowerCase()} drill${ds.length===1?'':'s'}</span>`;
 }
 // ================= Compete: weekly practice tests, leaderboards and leagues =================
 S.comp={state:'idle',tests:[],week:[],leagues:[],members:{},season:{},screen:'list',test:null,board:'all',band:null,league:null,form:{code:'',name:''},msg:'',play:null};
@@ -1716,7 +1716,7 @@ function learnSG(){
 function learnVideos(){
   const soon=[['Strokes gained in 60 seconds','The idea behind every number in the app.'],['Reading your round','What to look at first after you save a round.'],['Practice that actually sticks','Why scores and tests beat hitting balls.'],['Course strategy for 15 handicaps','Where to aim to stop losing shots off the tee.']];
   return `${LESSONS.map(l=>`<a class="card vidcard" href="${l.url}" target="_blank" rel="noopener"><span class="vthumb">▶</span><span><b>${esc(l.title)}</b><span class="small muted">${esc(l.sub)}</span><span class="small">${esc(l.body)}</span></span></a>`).join('')}
-    ${secHead('Coming soon','')}
+    ${secHead('Coming soon','','',false,true)}
     ${soon.map(([t,x])=>`<div class="card vidcard soon"><span class="vthumb">▶</span><span><b>${esc(t)}</b><span class="small muted">${esc(x)}</span></span></div>`).join('')}`;
 }
 function learnApp(){
@@ -1742,7 +1742,7 @@ function vImprove(){
   <div class="top"><span class="brand">Improve</span></div>
   <div class="stack">
     ${subTabs('imptab',S.impTab||'overview',[['overview','Overview'],['plan','Practice plan'],['drills','Drills']])}
-    ${(S.impTab||'overview')==='overview'?`${heroImprove()}${planCta()}${goalsHtml()}`:''}
+    ${(S.impTab||'overview')==='overview'?`${heroImprove()||impPreview()}${planCta()}${goalsHtml()}`:''}
     ${S.impTab==='plan'?`${blockHtml()}${S.oneOff?planHtml():`<button class="card ctacard" data-act="oneoff"><span><span class="eyebrow">Just practising today?</span><b>Build a one-off session</b><span class="small muted">Pick your time and where you are. No plan needed.</span></span><i>›</i></button>`}`:''}
     ${S.impTab==='drills'?libraryHtml():''}
     ${sample?'':'<!--'}<div class="card stack">
@@ -1841,7 +1841,7 @@ function vSetup(){
       <span class="muted small" id="ctot">${setupTotals()}</span>
     </div>
     ${sample?'<h3>How do you want to enter this round?</h3>':''}
-    <button class="btn big primary" data-act="startholes">Hole by hole<span class="small" style="display:block;font-weight:500;opacity:.85">Tap it in as you go, about 10 seconds a hole</span></button>
+    <button class="btn big primary" data-act="startholes">Start round<span class="small" style="display:block;font-weight:500;opacity:.85">About 10 seconds a hole</span></button>
     ${sample?'':'<!--'}<button class="btn big" data-act="starttalk">Talk it through afterwards<span class="small muted" style="display:block;font-weight:500">Describe your round and Claude fills in the card for you to check</span></button>${sample?'':'-->'}
   </div>`;
 }
@@ -1954,7 +1954,7 @@ function vHole(){
   const scores=[]; for(let s=Math.max(1,par-2); s<=par+4; s++) scores.push(s);
   const names={'-2':'Eagle','-1':'Birdie','0':'Par','1':'Bogey','2':'Double','3':'Triple','4':'+4'};
   return `
-  <div class="top"><button class="btn ghost" data-act="home">← Rounds</button><span class="muted small">${esc(r.course)}</span>${sample?'<button class="btn ghost small" data-act="talkfrom">Talk it</button>':'<span></span>'}</div>
+  <div class="top"><button class="btn ghost" data-act="home">← Home</button><span class="muted small">${esc(r.course)}</span>${sample?'<button class="btn ghost small" data-act="talkfrom">Talk it</button>':'<span></span>'}</div>
   <div class="stack">
     <div class="holehead"><span class="holenum num">${h.n}</span><div style="flex:1"><h2>Par ${par} · ${lenShow(h.len)} ${u}</h2><span class="muted small">Hole ${S.idx+1} of ${N}${h.si?` · Index ${h.si}`:''}</span></div><button class="btn ghost small" data-act="edithole">${S.editHole?'Done':'Edit hole'}</button></div>
     ${S.editHole?`<div class="sec"><div class="holeedit"><span class="small muted">Par</span>${seg('hpar',String(par),[['3','3'],['4','4'],['5','5']])}<label class="small muted" for="hlen">Length</label><input id="hlen" class="field num" type="number" inputmode="numeric" data-hlen="1" value="${lenShow(h.len)}"><span class="muted">${u}</span></div><span class="small muted">Saved to the course for next time too.</span></div>`:''}
@@ -1993,7 +1993,7 @@ function vHole(){
 
     <section id="sec-putt" class="sec${uns(h,['putts','fp'])}${asm(h,['putts','fp'])}"><div class="lab"><h3>Putting</h3></div>
       <div class="chips">${[0,1,2,3,4].map(p=>chip('putts',p,p,Number(h.putts)===p&&h.putts!=null,p===0?(h.pickup?'none':'holed off green'):p===1?'putt':'putts')).join('')}</div>${derivedNote(h,'putts')}${h.atg&&Number(h.atgShots||1)===1&&h.putts!=null&&Number(h.putts)<=1?`<span class="savepill">✓ ${h.atgLie==='sand'?'Sand save':'Up and down'}</span>`:''}
-      ${Number(h.putts)>0?`<span class="small muted">First putt length (a pace is about 3 feet)</span>${puttBands(h)}${assumeHint(h,'fp')}`:''}${h.putts==null?assumeHint(h,'putts'):''}
+      ${Number(h.putts)>0?(h.fp!=null&&!(h.assumed||[]).includes('fp')&&S.editSec!=='putt'?`<button class="sumpill" data-act="editsec" data-val="putt"><span>First putt ${esc(fpBandText(h.fp))}</span><u>Edit</u></button>`:`<span class="small muted">First putt length (a pace is about 3 feet)</span>${puttBands(h)}${assumeHint(h,'fp')}${S.editSec==='putt'?`<button class="btn small" style="justify-self:start" data-act="editsec" data-val="">Done</button>`:''}`):''}${h.putts==null?assumeHint(h,'putts'):''}
     </section>
 
     ${h.pickup?`<section id="sec-pick" class="sec pickedup"><div class="lab"><h3>Where you picked up</h3></div>
@@ -2019,7 +2019,7 @@ function vStrip(){
 // ----- talk it through -----
 function vTalk(){
   return `
-  <div class="top"><button class="btn ghost" data-act="home">← Rounds</button><span class="brand">Talk it through</span><span></span></div>
+  <div class="top"><button class="btn ghost" data-act="home">← Home</button><span class="brand">Talk it through</span><span></span></div>
   <div class="stack">
     <h2>${esc(S.round.course)}</h2>
     <p class="muted" style="margin:0">Go hole by hole in your own words. Mention where each tee shot finished and how far you had left, any chips or bunker shots, how long your first putt was and how many putts. Claude fills in the card and highlights anything it had to guess.</p>
@@ -2047,7 +2047,7 @@ function recapHtml(r,per){
     <h2>Round recap</h2>
     <span class="small muted">${line}${condTags(r)}</span>
     <div class="recaprow"><span class="small muted">Best part</span><div><b>${esc(best.l)}</b> <span class="num ${cls(best.v)}">${f1(best.v)}</span><div class="small muted">${best.v>0.05?`Better than ${vs} here.`:`Your least costly area against ${vs}.`}</div></div></div>
-    <div class="recaprow"><span class="small muted">Biggest leak</span><div><b>${esc(worst.l)}</b> <span class="num ${cls(worst.v)}">${f1(worst.v)}</span>${leak&&leak.body&&leak.body.replace(mv?mv.tip:'\u0000','').trim()?`<div class="small muted">${esc(leak.body.replace(mv?mv.tip:'\u0000','').trim())}</div>`:''}</div></div>
+    <div class="recaprow"><span class="small muted">${worst.v<0?'Biggest leak':'Weakest part'}</span><div><b>${esc(worst.l)}</b> <span class="num ${cls(worst.v)}">${f1(worst.v)}</span>${leak&&leak.body&&leak.body.replace(mv?mv.tip:'\u0000','').trim()?`<div class="small muted">${esc(leak.body.replace(mv?mv.tip:'\u0000','').trim())}</div>`:''}</div></div>
     <div class="recaprow"><span class="small muted">Work on</span><div>${mv?`<b>${esc(mv.title)}</b><div class="small muted">${esc(mv.tip)}</div>`:`<b>Nothing stood out</b><div class="small muted">You matched your goal handicap across the board. Keep it going.</div>`}</div></div>
     ${r.example?'':`<button class="btn" data-act="tab" data-val="improve">See your path to ${esc(fmtHcp(goalHcp()))}</button>`}
   </div>`;
@@ -2172,7 +2172,7 @@ function vResults(){
   const r=S.viewing||S.round, {t,per}=rsg(r,S.base), tour=roundSG(r,'tour').t;
   const unsaved=!S.viewing&&!r.saved;
   return `
-  <div class="top"><button class="btn ghost" data-act="home">← Rounds</button><span class="brand">Round</span><span></span></div>
+  <div class="top"><button class="btn ghost" data-act="home">← Home</button><span class="brand">Round</span><span></span></div>
   <div class="stack">
     <div><h1>${esc(r.course)}</h1><span class="muted">${fmtDate(r.date)} · shot ${t.score} (${t.score-t.par>=0?'+':''}${t.score-t.par}) over ${t.holes} holes ${r.example?'<span class="tag">Example</span>':''}</span></div>
     ${heroRound(r)}
@@ -2188,10 +2188,10 @@ function vResults(){
     ${secHead('The usual stats','')}
     ${tilesHtml(famStats([r]),true)}
     ${secHead('Hole by hole','Strokes gained on every hole')}
-    <div class="card tbl"><table>
-      <thead><tr><th>Hole</th><th>Par</th><th>Score</th><th>Tee</th><th>Appr</th><th>Short</th><th>Putt</th><th>Total</th></tr></thead>
-      <tbody>${r.holes.map((h,i)=>{ const s=per[i]; const c=v=>s.ok?`<td class="${cls(v)}">${f2(v)}</td>`:'<td>–</td>'; return `<tr><td>${h.n}</td><td>${h.par}</td><td>${h.pickup?`<b class="pk">P</b> ${netDouble(h,r.hcp)}`:h.score??'–'}</td>${Number(h.par)>=4?c(s.ott):'<td class="muted">·</td>'}${c(s.app)}${c(s.atg)}${c(s.putt)}${c(s.total)}</tr>`; }).join('')}
-      <tr class="tot"><td>Total</td><td>${t.par}</td><td>${t.score}</td><td class="${cls(t.ott)}">${f1(t.ott)}</td><td class="${cls(t.app)}">${f1(t.app)}</td><td class="${cls(t.atg)}">${f1(t.atg)}</td><td class="${cls(t.putt)}">${f1(t.putt)}</td><td class="${cls(t.total)}">${f1(t.total)}</td></tr></tbody>
+    <div class="card tbl roundtbl"><table>
+      <thead><tr><th>Hole</th><th>Score</th><th>Drive</th><th>Appr</th><th>Short</th><th>Putt</th><th>Total</th></tr></thead>
+      <tbody>${r.holes.map((h,i)=>{ const s=per[i]; const c=v=>s.ok?`<td class="${cls(v)}">${f1(v)}</td>`:'<td>–</td>'; return `<tr><td>${h.n}<small class="muted"> P${h.par}</small></td><td>${h.pickup?`<b class="pk">P</b> ${netDouble(h,r.hcp)}`:h.score??'–'}</td>${Number(h.par)>=4?c(s.ott):'<td class="muted">·</td>'}${c(s.app)}${c(s.atg)}${c(s.putt)}${c(s.total)}</tr>`; }).join('')}
+      <tr class="tot"><td>Total</td><td>${t.score}<small class="muted"> /${t.par}</small></td><td class="${cls(t.ott)}">${f1(t.ott)}</td><td class="${cls(t.app)}">${f1(t.app)}</td><td class="${cls(t.atg)}">${f1(t.atg)}</td><td class="${cls(t.putt)}">${f1(t.putt)}</td><td class="${cls(t.total)}">${f1(t.total)}</td></tr></tbody>
     </table></div>
     <div class="row">
       ${unsaved?`<button class="btn primary" data-act="save">Save round</button>`:''}
@@ -2682,6 +2682,12 @@ function vMe(){
   const hs=rs.map(r=>Number(myHcp(r))), start=hs.length?hs[0]:S.hcp, now=S.hcp!=null?S.hcp:start, goal=S.goal!=null?S.goal:goalHcp();
   const pct=start!=null&&start!==goal?Math.max(0,Math.min(1,(start-now)/(start-goal))):0;
   const P=playingTo(), pl=P?P.v:null;
+  if(S.hcp==null&&!rs.length) return `<div class="top"><span class="brand">My golf</span>${GEAR}</div><div class="stack">${whoSeg()}
+    <div class="hero stack"><span class="eyebrow">Let's get you set up</span><h2 class="herohead">What do you play off?</h2>
+      <span style="opacity:.85">Your handicap is what every shot is measured against. Your goal is where you want to get to.</span>
+      <div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label class="small" style="opacity:.85" for="myhcp">Handicap</label><input id="myhcp" class="field num" inputmode="decimal" data-hcp="hcp" placeholder="e.g. 14.2"></div>
+      <div style="flex:1"><label class="small" style="opacity:.85" for="goalhcp">Goal</label><input id="goalhcp" class="field num" inputmode="decimal" data-hcp="goal" placeholder="e.g. 10"></div></div></div>
+    <div class="card stack"><h3>Fills in as you play</h3><span class="muted">After your first round: personal bests, your courses and how each club is going. After a few: your handicap trend and player card.</span><button class="btn primary" data-act="newround">Start a round</button></div></div>`;
   const card=`<div class="hero mecard">
     <div class="row between" style="flex-wrap:nowrap"><div><span class="eyebrow">${esc(me.name||'Your profile')}</span><b class="mehcp num">${fmtHcp(now)}</b><span class="small" style="opacity:.85">Handicap · goal ${fmtHcp(goal)}</span></div>
       <div class="mestats"><div><b class="num">${pl!=null?fmtHcp(pl):'–'}</b><span>Playing to</span></div><div><b class="num">${rs.length}</b><span>Rounds</span></div></div></div>
@@ -2708,10 +2714,10 @@ function vMe(){
     <div class="card"><div class="cabinet">${got.slice(0,4).map(x=>`<div class="trophy"><span class="cm">${MEDAL}</span><b>${esc(x.t)}</b></div>`).join('')||'<span class="muted">Your first badge is a round away.</span>'}</div></div>`; }catch(e){}
   // practice log
   const B=S.block, done=B?B.sessions.filter(x=>x.done).length:0, mins=B?B.sessions.filter(x=>x.done).length*B.mins:0;
-  const log=`${secHead('Practice log','What you\'ve put in')}
+  const log=`${secHead('Practice log','What you\'ve put in','',false,true)}
     <div class="tiles"><div class="tile"><span>Sessions done</span><b>${done}</b><span>${B?`of ${B.sessions.length} in your plan`:'No plan yet'}</span></div><div class="tile"><span>Time practised</span><b>${Math.floor(mins/60)}h ${mins%60}m</b><span>this plan</span></div><div class="tile"><span>Rounds this year</span><b>${rs.filter(r=>(r.date||'').slice(0,4)===today().slice(0,4)).length}</b><span>logged</span></div></div>`;
   return `<div class="top"><span class="brand">My golf</span>${GEAR}</div>
-  <div class="stack">${whoSeg()}${card}${pbs}${courses}${bag}${log}</div>`;
+  <div class="stack">${whoSeg()}${card}${pbs}${courses}${bag}${S.block||rs.length?log:''}</div>`;
 }
 function hcpLine(rs){
   const v=rs.map(r=>Number(myHcp(r))), W=320,H=110,n=v.length, lo=Math.min(...v)-0.5, hi=Math.max(...v)+0.5;
@@ -2760,10 +2766,10 @@ function vCourseNotes(name){
     ${secHead('Hole by hole','Your average score on each hole')}
     <div class="card"><div class="holegrid">${holes.map(cell).join('')}</div>
       <div class="row small muted" style="gap:12px;margin-top:10px"><span><i class="lg hgood"></i>Par or better</span><span><i class="lg hok"></i>Under +0.5</span><span><i class="lg hmeh"></i>+0.5 to +1</span><span><i class="lg hbad"></i>+1 or worse</span></div></div>
-    ${hard.length?`${secHead('Costing you shots','Against your handicap on the day')}<div class="card stack">${hard.map(h=>`<div class="insight leak"><b>Hole ${h.n} costs you ${Math.abs(h.sg).toFixed(1)} a round</b><div class="muted small">Mostly ${AREA[h.why[0]]} (${f1(h.why[1])}). Averaging ${h.avg.toFixed(1)} on a par ${h.par}.</div></div>`).join('')}</div>`:''}
-    ${easy.length?`${secHead('Your best holes','')}<div class="card stack">${easy.map(h=>`<div class="insight good"><b>Hole ${h.n} gains you ${h.sg.toFixed(1)} a round</b><div class="muted small">Mostly ${AREA[h.best[0]]} (${f1(h.best[1])}). Averaging ${h.avg.toFixed(1)} on a par ${h.par}.</div></div>`).join('')}</div>`:''}
+    ${hard.length?`${secHead('Costing you shots','Against your handicap on the day','',false,true)}<div class="card stack">${hard.map(h=>`<div class="insight leak"><b>Hole ${h.n} costs you ${Math.abs(h.sg).toFixed(1)} a round</b><div class="muted small">Mostly ${AREA[h.why[0]]} (${f1(h.why[1])}). Averaging ${h.avg.toFixed(1)} on a par ${h.par}.</div></div>`).join('')}</div>`:''}
+    ${easy.length?`${secHead('Your best holes','','',false,true)}<div class="card stack">${easy.map(h=>`<div class="insight good"><b>Hole ${h.n} gains you ${h.sg.toFixed(1)} a round</b><div class="muted small">Mostly ${AREA[h.best[0]]} (${f1(h.best[1])}). Averaging ${h.avg.toFixed(1)} on a par ${h.par}.</div></div>`).join('')}</div>`:''}
     ${byPar.length?`<div class="card"><h3>By par</h3>${byPar.map(([p,d])=>`<div class="setrow"><span>Par ${p}s</span><b class="num ${d<=0.3?'pos':d>0.8?'neg':''}">${dd(d)} a hole</b></div>`).join('')}</div>`:''}
-    ${secHead('Rounds here','')}
+    ${secHead('Rounds here','','',false,true)}
     <div class="card homerounds">${[...rs].reverse().map(r=>`<button class="hrr" data-act="open" data-id="${esc(r.id)}"><span>${esc(shortDate(r.date))}</span><b class="num" style="margin-left:auto">${fullRound(r)?roundTot(r):r.holes.filter(h=>h.score!=null).length+' holes'}</b><i aria-hidden="true">›</i></button>`).join('')}</div>
   </div>`;
 }
@@ -2826,4 +2832,14 @@ function bagHtml(rs,clubs,typical){
     <p class="small muted" style="margin:10px 0 0">Each approach is matched to the club you'd hit from that distance. "To hole" is how far from the hole you finished, in feet.</p></div>`:'';
   const edit=`<button class="linkbtn" data-act="mytab" data-val="settings">Edit distances</button>`;
   return `${secHead('My bag',typical?'Using typical distances for your handicap. Add your own for better matching':'How each club is performing',edit)}${teeCard}${apCard}${!teeCard&&!apCard?'<div class="card muted">Log a few rounds and this fills in.</div>':''}`;
+}
+
+// Improve before there's enough data: show what's coming instead of an empty page
+function impPreview(){
+  const n=realRounds().length, left=Math.max(0,GOAL_EVERY-n);
+  if(!left) return '';
+  return `<div class="hero stack"><span class="eyebrow">${n?`${n} of ${GOAL_EVERY} rounds logged`:'Start here'}</span>
+    <h2 class="herohead">${left} more round${left>1?'s':''} and this page <span class="hl">builds itself</span>.</h2>
+    <div class="unlocks"><div><b>1</b><span>Your biggest leak, in shots a round</span></div><div><b>2</b><span>Goals picked from your rounds</span></div><div><b>3</b><span>A 4-week plan with drills and tests</span></div></div>
+    <button class="btn" data-act="imptab" data-val="drills" style="background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.3)">Browse drills now</button></div>`;
 }
